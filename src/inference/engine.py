@@ -5,14 +5,14 @@ import sys
 from typing import Optional
 import os
 
-from model.architecture import ChessNet, ChessNetLarge, ChessNetXL
-from model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
-from engine.evaluation import NNEvaluator
-from engine.stockfish_evaluator import StockfishEvaluator
-from engine.ensemble_evaluator import EnsembleEvaluator
-from engine.search import MinimaxSearch
-from utils.board_utils import fen_to_board, is_game_over
-from utils.time_management import allocate_time
+from ..model.architecture import ChessNet, ChessNetLarge, ChessNetXL
+from ..model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
+from ..engine.evaluation import NNEvaluator
+from ..engine.stockfish_evaluator import StockfishEvaluator
+from ..engine.ensemble_evaluator import EnsembleEvaluator
+from ..engine.search import MinimaxSearch
+from ..utils.board_utils import fen_to_board, is_game_over
+from ..utils.time_management import allocate_time
 
 
 def detect_model_size(checkpoint: dict) -> str:
