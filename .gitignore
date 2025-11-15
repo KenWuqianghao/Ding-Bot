@@ -39,9 +39,14 @@ Thumbs.db
 *.log
 logs/
 
-# Data
+# Data (but NOT src/data/ which contains Python modules!)
 data/
 *.csv
+# Exception: src/data/ contains code modules, not data files
+!src/data/
+!src/data/*.py
+# But still ignore __pycache__ in src/data/
+src/data/__pycache__/
 
 # Temporary files
 *.tmp

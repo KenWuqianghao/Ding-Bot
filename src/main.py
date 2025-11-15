@@ -8,7 +8,13 @@ ding_bot_src_path = Path(__file__).parent.resolve()
 # Remove any existing entries to avoid conflicts
 sys.path = [p for p in sys.path if str(ding_bot_src_path) not in p]
 # Insert at the beginning to ensure it's checked first
-sys.path.insert(0, str(ding_bot_src_path))
+ding_bot_src_path_str = str(ding_bot_src_path)
+sys.path.insert(0, ding_bot_src_path_str)
+
+# CRITICAL: Also ensure all submodules can find each other
+# This is needed because when modules import each other, they need src/ in path
+if ding_bot_src_path_str not in sys.path:
+    sys.path.insert(0, ding_bot_src_path_str)
 
 # For backward compatibility, also check parent Chess-Bot directory (for local development)
 chess_bot_path = Path(__file__).parent.parent.parent.resolve()
@@ -33,64 +39,29 @@ except ImportError:
 # Import our chess engine (only if torch is available)
 if TORCH_AVAILABLE:
     try:
-        # Ensure Chess-Bot is in path
-        chess_bot_str = str(chess_bot_path)
-        if chess_bot_str not in sys.path:
-            sys.path.insert(0, chess_bot_str)
+        # CRITICAL: Ensure ding_bot_src_path is FIRST in sys.path
+        # This must happen before any imports
+        if ding_bot_src_path_str not in sys.path:
+            sys.path.insert(0, ding_bot_src_path_str)
         
-        # Add Chess-Bot/src to src.__path__ if src is a namespace package
-        # Convert _NamespacePath to list, modify, and reassign
-        import src
-        chess_bot_src_path = str(chess_bot_path / 'src')
-        if hasattr(src, '__path__'):
-            # Convert namespace path to list if needed
-            path_list = list(src.__path__)
-            if chess_bot_src_path not in path_list:
-                path_list.insert(0, chess_bot_src_path)
-                # Reassign as list (Python will handle namespace packages)
-                src.__path__ = path_list
-        
-        # Clear cached modules to force reload from Chess-Bot
-        # Need to clear src.utils so relative imports from engine.py resolve correctly
-        modules_to_clear = []
-        for mod_name in list(sys.modules.keys()):
-            if (mod_name.startswith('src.inference') or 
-                mod_name.startswith('src.model') or 
-                mod_name.startswith('src.engine') or
-                mod_name.startswith('src.utils.') or
-                mod_name == 'src.utils'):
-                # Check if it's from Ding-Bot
-                mod = sys.modules[mod_name]
-                if hasattr(mod, '__file__') and mod.__file__ and 'Ding-Bot' in str(mod.__file__):
-                    modules_to_clear.append(mod_name)
-        
-        # Clear modules from Ding-Bot (but keep src.utils.chess_manager reference)
-        ding_bot_chess_manager_backup = None
-        if 'src.utils.chess_manager' in sys.modules:
-            ding_bot_chess_manager_backup = sys.modules['src.utils.chess_manager']
-        
-        for mod_name in modules_to_clear:
-            if mod_name != 'src.utils.chess_manager':  # Keep chess_manager
-                del sys.modules[mod_name]
+        # Verify data module exists
+        data_path = Path(ding_bot_src_path) / 'data' / 'preprocessing.py'
+        if not data_path.exists():
+            print(f"Warning: data/preprocessing.py not found at {data_path}")
         
         # Now import should work - use direct import from Ding-Bot/src
-        try:
-            from inference.engine import ChessEngine
-            ENGINE_AVAILABLE = True
-        except ImportError:
-            # Fallback to Chess-Bot/src for local development
-            from src.inference.engine import ChessEngine
-            ENGINE_AVAILABLE = True
-        
-        # Restore Ding-Bot's chess_manager if needed (for compatibility)
-        if ding_bot_chess_manager_backup and 'src.utils.chess_manager' not in sys.modules:
-            sys.modules['src.utils.chess_manager'] = ding_bot_chess_manager_backup
+        # The path setup in evaluation.py and engine.py will also run, but
+        # having it here first ensures it works
+        from inference.engine import ChessEngine
+        ENGINE_AVAILABLE = True
             
     except Exception as import_err:
         print(f"Warning: Could not import ChessEngine: {import_err}")
-        print(f"Chess-Bot path: {chess_bot_path}")
-        print(f"Chess-Bot/src exists: {(chess_bot_path / 'src').exists()}")
-        print(f"Engine file exists: {(chess_bot_path / 'src' / 'inference' / 'engine.py').exists()}")
+        print(f"Ding-Bot src path: {ding_bot_src_path}")
+        print(f"Ding-Bot src exists: {ding_bot_src_path.exists()}")
+        print(f"Data dir exists: {(ding_bot_src_path / 'data').exists()}")
+        print(f"Preprocessing exists: {(ding_bot_src_path / 'data' / 'preprocessing.py').exists()}")
+        print(f"Current sys.path (first 5): {sys.path[:5]}")
         import traceback
         traceback.print_exc()
         ENGINE_AVAILABLE = False

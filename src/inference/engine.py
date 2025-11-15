@@ -1,11 +1,22 @@
 """Main chess engine interface."""
 import sys
+import os
 from pathlib import Path
 
 # CRITICAL: Add src/ to path BEFORE any other imports
-src_path = Path(__file__).parent.parent.resolve()
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+# Handle both absolute and relative __file__ paths
+if __file__:
+    src_path = Path(__file__).parent.parent.resolve()
+else:
+    # Fallback: try to find src/ from current working directory
+    src_path = Path.cwd() / 'src'
+    if not src_path.exists():
+        src_path = Path.cwd().parent / 'src'
+
+# Add to path if not already there
+src_path_str = str(src_path.resolve())
+if src_path_str not in sys.path:
+    sys.path.insert(0, src_path_str)
 
 import torch
 import chess

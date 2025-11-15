@@ -1,12 +1,32 @@
 """Neural network evaluator for chess positions."""
 import sys
+import os
 from pathlib import Path
 
 # CRITICAL: Add src/ to path BEFORE any other imports
 # This ensures imports work even if src/ is not in Python path
-src_path = Path(__file__).parent.parent.resolve()
-if str(src_path) not in sys.path:
-    sys.path.insert(0, str(src_path))
+# Handle both absolute and relative __file__ paths
+if __file__:
+    src_path = Path(__file__).parent.parent.resolve()
+else:
+    # Fallback: try to find src/ from current working directory
+    src_path = Path.cwd() / 'src'
+    if not src_path.exists():
+        # Try parent directory
+        src_path = Path.cwd().parent / 'src'
+
+# Add to path if not already there
+src_path_str = str(src_path.resolve())
+if src_path_str not in sys.path:
+    sys.path.insert(0, src_path_str)
+
+# DEBUG: Verify path was added and data module exists
+# This helps diagnose import issues in judge system
+if not any('data' in str(p) for p in [Path(p) / 'data' for p in sys.path[:3] if Path(p).exists()]):
+    # Last resort: try adding parent directory if src/ doesn't work
+    parent_path = str(src_path.parent)
+    if parent_path not in sys.path:
+        sys.path.insert(0, parent_path)
 
 import torch
 import chess
