@@ -1,19 +1,18 @@
 """Leela Chess Zero style architecture for chess engines."""
+import sys
+from pathlib import Path
+
+# CRITICAL: Add src/ to path BEFORE any other imports
+src_path = Path(__file__).parent.parent.parent.resolve()
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Optional
 
-try:
-    from model.heads import ValueHead, PolicyHead
-except ImportError:
-    # Fallback for when src is not in path
-    import sys
-    from pathlib import Path
-    src_path = Path(__file__).parent.parent.parent
-    if str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
-    from model.heads import ValueHead, PolicyHead
+from model.heads import ValueHead, PolicyHead
 
 
 class ResidualBlock(nn.Module):

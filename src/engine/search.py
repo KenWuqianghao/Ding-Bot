@@ -94,9 +94,14 @@ class MinimaxSearch:
         history_moves = []
         quiet = []
         
+        # Separate moves into categories with STRONG priority for captures and castling
+        castling_moves = []
         for move in moves:
             if move == tt_move:
                 tt_move_list.append(move)
+            elif board.is_castling(move):
+                # Castling moves get highest priority (after TT move)
+                castling_moves.append(move)
             elif board.is_capture(move):
                 captures.append(move)
             elif board.gives_check(move):
@@ -109,10 +114,11 @@ class MinimaxSearch:
                 quiet.append(move)
         
         # Sort captures by SEE (Static Exchange Evaluation) if enabled, else MVV-LVA
+        # CRITICAL: Prioritize captures that win material
         if self.use_see:
             captures = order_captures_by_see(board, captures)
         else:
-            # MVV-LVA fallback
+            # MVV-LVA fallback - prioritize captures that win material
             piece_values = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3,
                            chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 0}
             
@@ -120,7 +126,12 @@ class MinimaxSearch:
                 captured = board.piece_at(move.to_square)
                 attacker = board.piece_at(move.from_square)
                 if captured and attacker:
-                    return piece_values.get(captured.piece_type, 0) - piece_values.get(attacker.piece_type, 0)
+                    # Higher value = better capture (capture high-value piece with low-value piece)
+                    captured_val = piece_values.get(captured.piece_type, 0)
+                    attacker_val = piece_values.get(attacker.piece_type, 0)
+                    # Add bonus for winning material
+                    material_gain = captured_val - attacker_val
+                    return material_gain * 1000 + captured_val  # Prioritize material gain
                 return 0
             
             captures.sort(key=capture_value, reverse=True)
@@ -135,9 +146,10 @@ class MinimaxSearch:
         except:
             pass
         
-        # Combine in priority order with STRONG emphasis on checks and captures
-        # This prevents blunders by prioritizing tactical moves
-        ordered = tt_move_list + checks + captures + killers + history_moves + quiet
+        # Combine in priority order with STRONG emphasis on captures, castling, and checks
+        # Priority: TT move > Castling > Checks > Captures > Killers > History > Quiet
+        # This prevents blunders by prioritizing tactical moves and castling
+        ordered = tt_move_list + castling_moves + checks + captures + killers + history_moves + quiet
         return ordered
     
     def quiescence_search(

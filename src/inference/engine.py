@@ -1,34 +1,25 @@
 """Main chess engine interface."""
+import sys
+from pathlib import Path
+
+# CRITICAL: Add src/ to path BEFORE any other imports
+src_path = Path(__file__).parent.parent.resolve()
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import torch
 import chess
-import sys
 from typing import Optional
 import os
 
-try:
-    from model.architecture import ChessNet, ChessNetLarge, ChessNetXL
-    from model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
-    from engine.evaluation import NNEvaluator
-    from engine.stockfish_evaluator import StockfishEvaluator
-    from engine.ensemble_evaluator import EnsembleEvaluator
-    from engine.search import MinimaxSearch
-    from utils.board_utils import fen_to_board, is_game_over
-    from utils.time_management import allocate_time
-except ImportError:
-    # Fallback for when src is not in path
-    import sys
-    from pathlib import Path
-    src_path = Path(__file__).parent.parent
-    if str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
-    from model.architecture import ChessNet, ChessNetLarge, ChessNetXL
-    from model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
-    from engine.evaluation import NNEvaluator
-    from engine.stockfish_evaluator import StockfishEvaluator
-    from engine.ensemble_evaluator import EnsembleEvaluator
-    from engine.search import MinimaxSearch
-    from utils.board_utils import fen_to_board, is_game_over
-    from utils.time_management import allocate_time
+from model.architecture import ChessNet, ChessNetLarge, ChessNetXL
+from model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
+from engine.evaluation import NNEvaluator
+from engine.stockfish_evaluator import StockfishEvaluator
+from engine.ensemble_evaluator import EnsembleEvaluator
+from engine.search import MinimaxSearch
+from utils.board_utils import fen_to_board, is_game_over
+from utils.time_management import allocate_time
 
 
 def detect_model_size(checkpoint: dict) -> str:

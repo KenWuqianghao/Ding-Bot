@@ -1,21 +1,20 @@
 """Neural network evaluator for chess positions."""
+import sys
+from pathlib import Path
+
+# CRITICAL: Add src/ to path BEFORE any other imports
+# This ensures imports work even if src/ is not in Python path
+src_path = Path(__file__).parent.parent.resolve()
+if str(src_path) not in sys.path:
+    sys.path.insert(0, str(src_path))
+
 import torch
 import chess
 from typing import Tuple, Dict, List
 import numpy as np
 
-try:
-    from model.architecture import ChessNet
-    from data.preprocessing import fen_to_tensor
-except ImportError:
-    # Fallback for when src is not in path
-    import sys
-    from pathlib import Path
-    src_path = Path(__file__).parent.parent
-    if str(src_path) not in sys.path:
-        sys.path.insert(0, str(src_path))
-    from model.architecture import ChessNet
-    from data.preprocessing import fen_to_tensor
+from model.architecture import ChessNet
+from data.preprocessing import fen_to_tensor
 
 
 class NNEvaluator:
@@ -79,9 +78,9 @@ class NNEvaluator:
         if board.is_check():
             # Being in check is bad, giving check is good
             if board.turn == chess.WHITE:
-                check_bonus = -80  # White in check (bad for white)
+                check_bonus = -150  # White in check (bad for white) - INCREASED
             else:
-                check_bonus = 80   # Black in check (good for white)
+                check_bonus = 150   # Black in check (good for white) - INCREASED
         
         # Add penalties for hanging pieces (pieces under attack without defense)
         safety_penalty = 0
@@ -95,7 +94,7 @@ class NNEvaluator:
                 if len(attackers) > len(defenders):
                     # Piece is hanging (more attackers than defenders)
                     piece_value = piece_values.get(piece.piece_type, 0)
-                    penalty = piece_value * 0.4  # 40% penalty for hanging pieces
+                    penalty = piece_value * 0.6  # 60% penalty for hanging pieces (INCREASED from 40%)
                     if piece.color == chess.WHITE:
                         safety_penalty -= penalty  # Penalty for white
                     else:
@@ -106,8 +105,31 @@ class NNEvaluator:
         black_pieces = sum(1 for sq in chess.SQUARES if board.piece_at(sq) and board.piece_at(sq).color == chess.BLACK)
         piece_count_bonus = (white_pieces - black_pieces) * 15
         
+        # CRITICAL: Add castling bonuses (castling is good!)
+        castling_bonus = 0
+        if board.has_kingside_castling_rights(chess.WHITE):
+            castling_bonus += 50  # White can castle kingside
+        if board.has_queenside_castling_rights(chess.WHITE):
+            castling_bonus += 50  # White can castle queenside
+        if board.has_kingside_castling_rights(chess.BLACK):
+            castling_bonus -= 50  # Black can castle kingside
+        if board.has_queenside_castling_rights(chess.BLACK):
+            castling_bonus -= 50  # Black can castle queenside
+        
+        # Check if castling has already happened (king moved from starting square)
+        # If king is on e1/e8, castling is still possible, so bonus applies
+        # If king has moved, remove castling bonus
+        if board.king(chess.WHITE) and chess.square_file(board.king(chess.WHITE)) != 4:
+            # White king not on e-file, castling rights lost
+            if not board.has_kingside_castling_rights(chess.WHITE) and not board.has_queenside_castling_rights(chess.WHITE):
+                castling_bonus -= 50  # Penalty for losing castling rights
+        if board.king(chess.BLACK) and chess.square_file(board.king(chess.BLACK)) != 4:
+            # Black king not on e-file, castling rights lost
+            if not board.has_kingside_castling_rights(chess.BLACK) and not board.has_queenside_castling_rights(chess.BLACK):
+                castling_bonus += 50  # Bonus for white (black lost castling)
+        
         # Combine all factors
-        total_eval = material + check_bonus + safety_penalty + piece_count_bonus
+        total_eval = material + check_bonus + safety_penalty + piece_count_bonus + castling_bonus
         
         return total_eval
     
@@ -193,14 +215,14 @@ class NNEvaluator:
             # If model outputs from side-to-move perspective, material eval should also be from Black's perspective
             material_eval = -material_eval  # Convert white's perspective to black's perspective
         
-        # Increase traditional heuristic weight to prevent blunders
-        # For undertrained models, use much more material eval
+        # DRAMATICALLY increase traditional heuristic weight to prevent blunders
+        # Model is still undertrained - prioritize safety over NN evaluation
         if abs(nn_value) < 0.1:
-            # Undertrained: 50% NN, 50% traditional (prevents major blunders)
-            blended_eval = 0.5 * centipawns + 0.5 * material_eval
+            # Undertrained: 30% NN, 70% traditional (heavily prioritize safety)
+            blended_eval = 0.3 * centipawns + 0.7 * material_eval
         else:
-            # Normal: 60% NN, 40% traditional (still NN primary but safer)
-            blended_eval = 0.6 * centipawns + 0.4 * material_eval
+            # Normal: 50% NN, 50% traditional (equal weight for safety)
+            blended_eval = 0.5 * centipawns + 0.5 * material_eval
         
         # Cache the result (limit cache size to avoid memory issues)
         if len(self.eval_cache) < 10000:  # Limit cache to 10k entries
@@ -283,14 +305,14 @@ class NNEvaluator:
                 if not board.turn:
                     material_eval = -material_eval
                 
-                # Increase traditional heuristic weight to prevent blunders
-                # For undertrained models, use much more material eval
+                # DRAMATICALLY increase traditional heuristic weight to prevent blunders
+                # Model is still undertrained - prioritize safety over NN evaluation
                 if abs(nn_value) < 0.1:
-                    # Undertrained: 50% NN, 50% traditional (prevents major blunders)
-                    blended_eval = 0.5 * centipawns + 0.5 * material_eval
+                    # Undertrained: 30% NN, 70% traditional (heavily prioritize safety)
+                    blended_eval = 0.3 * centipawns + 0.7 * material_eval
                 else:
-                    # Normal: 60% NN, 40% traditional (still NN primary but safer)
-                    blended_eval = 0.6 * centipawns + 0.4 * material_eval
+                    # Normal: 50% NN, 50% traditional (equal weight for safety)
+                    blended_eval = 0.5 * centipawns + 0.5 * material_eval
                 
                 # Cache result
                 fen = board.fen()
