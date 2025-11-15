@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from typing import Dict, Optional
 
-from ..heads import ValueHead, PolicyHead
+from model.heads import ValueHead, PolicyHead
 
 
 class ResidualBlock(nn.Module):

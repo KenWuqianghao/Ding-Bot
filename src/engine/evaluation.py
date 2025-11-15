@@ -4,8 +4,8 @@ import chess
 from typing import Tuple, Dict, List
 import numpy as np
 
-from ..model.architecture import ChessNet
-from ..data.preprocessing import fen_to_tensor
+from model.architecture import ChessNet
+from data.preprocessing import fen_to_tensor
 
 
 class NNEvaluator:
