@@ -135,8 +135,9 @@ class MinimaxSearch:
         except:
             pass
         
-        # Combine in priority order
-        ordered = tt_move_list + captures + checks + killers + history_moves + quiet
+        # Combine in priority order with STRONG emphasis on checks and captures
+        # This prevents blunders by prioritizing tactical moves
+        ordered = tt_move_list + checks + captures + killers + history_moves + quiet
         return ordered
     
     def quiescence_search(

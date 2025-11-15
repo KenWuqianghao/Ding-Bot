@@ -5,7 +5,16 @@ import torch.nn.functional as F
 from typing import Dict, Optional, List
 import chess
 
-from .heads import ValueHead, PolicyHead
+try:
+    from .heads import ValueHead, PolicyHead
+except ImportError:
+    # Fallback for when src is not in path
+    import sys
+    from pathlib import Path
+    src_path = Path(__file__).parent.parent
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+    from model.heads import ValueHead, PolicyHead
 
 
 class SEBlock(nn.Module):

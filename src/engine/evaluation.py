@@ -4,8 +4,18 @@ import chess
 from typing import Tuple, Dict, List
 import numpy as np
 
-from model.architecture import ChessNet
-from data.preprocessing import fen_to_tensor
+try:
+    from model.architecture import ChessNet
+    from data.preprocessing import fen_to_tensor
+except ImportError:
+    # Fallback for when src is not in path
+    import sys
+    from pathlib import Path
+    src_path = Path(__file__).parent.parent
+    if str(src_path) not in sys.path:
+        sys.path.insert(0, str(src_path))
+    from model.architecture import ChessNet
+    from data.preprocessing import fen_to_tensor
 
 
 class NNEvaluator:
@@ -40,7 +50,10 @@ class NNEvaluator:
         self.cache_misses = 0
     
     def _material_eval(self, board: chess.Board) -> float:
-        """Quick material evaluation as fallback/adjustment."""
+        """
+        Enhanced material evaluation with checks, captures, and piece safety bonuses.
+        Returns evaluation from white's perspective in centipawns.
+        """
         piece_values = {
             chess.PAWN: 100,
             chess.KNIGHT: 320,
@@ -50,6 +63,7 @@ class NNEvaluator:
             chess.KING: 20000
         }
         
+        # Basic material count
         material = 0
         for square in chess.SQUARES:
             piece = board.piece_at(square)
@@ -60,7 +74,42 @@ class NNEvaluator:
                 else:
                     material -= value
         
-        return material
+        # CRITICAL: Add bonuses for checks (prevents ignoring checks)
+        check_bonus = 0
+        if board.is_check():
+            # Being in check is bad, giving check is good
+            if board.turn == chess.WHITE:
+                check_bonus = -80  # White in check (bad for white)
+            else:
+                check_bonus = 80   # Black in check (good for white)
+        
+        # Add penalties for hanging pieces (pieces under attack without defense)
+        safety_penalty = 0
+        for square in chess.SQUARES:
+            piece = board.piece_at(square)
+            if piece and piece.piece_type != chess.KING:
+                # Count attackers vs defenders
+                attackers = board.attackers(not piece.color, square)
+                defenders = board.attackers(piece.color, square)
+                
+                if len(attackers) > len(defenders):
+                    # Piece is hanging (more attackers than defenders)
+                    piece_value = piece_values.get(piece.piece_type, 0)
+                    penalty = piece_value * 0.4  # 40% penalty for hanging pieces
+                    if piece.color == chess.WHITE:
+                        safety_penalty -= penalty  # Penalty for white
+                    else:
+                        safety_penalty += penalty  # Bonus for white (black piece hanging)
+        
+        # Add bonus for having more pieces (activity/mobility)
+        white_pieces = sum(1 for sq in chess.SQUARES if board.piece_at(sq) and board.piece_at(sq).color == chess.WHITE)
+        black_pieces = sum(1 for sq in chess.SQUARES if board.piece_at(sq) and board.piece_at(sq).color == chess.BLACK)
+        piece_count_bonus = (white_pieces - black_pieces) * 15
+        
+        # Combine all factors
+        total_eval = material + check_bonus + safety_penalty + piece_count_bonus
+        
+        return total_eval
     
     def evaluate(self, board: chess.Board) -> float:
         """
@@ -144,12 +193,14 @@ class NNEvaluator:
             # If model outputs from side-to-move perspective, material eval should also be from Black's perspective
             material_eval = -material_eval  # Convert white's perspective to black's perspective
         
-        if abs(nn_value) < 0.1:  # Model output very small, likely undertrained
-            # Use more material eval for stability, but NN is still primary (>50%)
-            blended_eval = 0.6 * centipawns + 0.4 * material_eval
+        # Increase traditional heuristic weight to prevent blunders
+        # For undertrained models, use much more material eval
+        if abs(nn_value) < 0.1:
+            # Undertrained: 50% NN, 50% traditional (prevents major blunders)
+            blended_eval = 0.5 * centipawns + 0.5 * material_eval
         else:
-            # Normal blend - NN is primary evaluator
-            blended_eval = 0.8 * centipawns + 0.2 * material_eval
+            # Normal: 60% NN, 40% traditional (still NN primary but safer)
+            blended_eval = 0.6 * centipawns + 0.4 * material_eval
         
         # Cache the result (limit cache size to avoid memory issues)
         if len(self.eval_cache) < 10000:  # Limit cache to 10k entries
@@ -232,10 +283,14 @@ class NNEvaluator:
                 if not board.turn:
                     material_eval = -material_eval
                 
+                # Increase traditional heuristic weight to prevent blunders
+                # For undertrained models, use much more material eval
                 if abs(nn_value) < 0.1:
-                    blended_eval = 0.6 * centipawns + 0.4 * material_eval
+                    # Undertrained: 50% NN, 50% traditional (prevents major blunders)
+                    blended_eval = 0.5 * centipawns + 0.5 * material_eval
                 else:
-                    blended_eval = 0.8 * centipawns + 0.2 * material_eval
+                    # Normal: 60% NN, 40% traditional (still NN primary but safer)
+                    blended_eval = 0.6 * centipawns + 0.4 * material_eval
                 
                 # Cache result
                 fen = board.fen()

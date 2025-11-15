@@ -3,10 +3,12 @@ import os
 from pathlib import Path
 
 # Ding-Bot is now standalone - all code is in Ding-Bot/src
-# Add Ding-Bot/src to path for imports
+# Add Ding-Bot/src to path for imports - MUST BE FIRST
 ding_bot_src_path = Path(__file__).parent.resolve()
-if str(ding_bot_src_path) not in sys.path:
-    sys.path.insert(0, str(ding_bot_src_path))
+# Remove any existing entries to avoid conflicts
+sys.path = [p for p in sys.path if str(ding_bot_src_path) not in p]
+# Insert at the beginning to ensure it's checked first
+sys.path.insert(0, str(ding_bot_src_path))
 
 # For backward compatibility, also check parent Chess-Bot directory (for local development)
 chess_bot_path = Path(__file__).parent.parent.parent.resolve()
