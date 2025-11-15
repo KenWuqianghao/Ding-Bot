@@ -1,0 +1,54 @@
+# Model files (too large for GitHub)
+*.pth
+*.pt
+models/
+checkpoints/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+.venv
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.next/
+dist/
+build/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Data
+data/
+*.csv
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Environment variables (personal config - don't commit!)
+.env
+# But include .env.example as a template
+!.env.example
