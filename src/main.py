@@ -2,13 +2,18 @@ import sys
 import os
 from pathlib import Path
 
-# Add parent Chess-Bot directory to path to import our engine
-# Ding-Bot is in Chess-Bot/Ding-Bot, so we go up two levels
+# Ding-Bot is now standalone - all code is in Ding-Bot/src
+# Add Ding-Bot/src to path for imports
+ding_bot_src_path = Path(__file__).parent.resolve()
+if str(ding_bot_src_path) not in sys.path:
+    sys.path.insert(0, str(ding_bot_src_path))
+
+# For backward compatibility, also check parent Chess-Bot directory (for local development)
 chess_bot_path = Path(__file__).parent.parent.parent.resolve()
 chess_bot_path_str = str(chess_bot_path)
 if chess_bot_path_str not in sys.path:
     sys.path.insert(0, chess_bot_path_str)
-# Also ensure we can import from src
+# Also ensure we can import from Chess-Bot/src (for local development fallback)
 if str(chess_bot_path / 'src') not in sys.path:
     sys.path.insert(0, str(chess_bot_path / 'src'))
 
@@ -66,9 +71,14 @@ if TORCH_AVAILABLE:
             if mod_name != 'src.utils.chess_manager':  # Keep chess_manager
                 del sys.modules[mod_name]
         
-        # Now import should work - relative imports will resolve within Chess-Bot/src
-        from src.inference.engine import ChessEngine
-        ENGINE_AVAILABLE = True
+        # Now import should work - use direct import from Ding-Bot/src
+        try:
+            from inference.engine import ChessEngine
+            ENGINE_AVAILABLE = True
+        except ImportError:
+            # Fallback to Chess-Bot/src for local development
+            from src.inference.engine import ChessEngine
+            ENGINE_AVAILABLE = True
         
         # Restore Ding-Bot's chess_manager if needed (for compatibility)
         if ding_bot_chess_manager_backup and 'src.utils.chess_manager' not in sys.modules:
@@ -155,9 +165,9 @@ def initialize_engine():
     global engine
     
     # Priority: 1) Latest FINAL_BEST_MODEL (current training), 2) Latest resumed model, 3) Latest epoch checkpoint, 4) Most recent .pth, 5) Download from Hugging Face
-    # Check Ding-Bot/models first (for standalone deployment), then fall back to Chess-Bot/models
+    # Check Ding-Bot/models first (for standalone deployment), then fall back to Chess-Bot/models (for local development)
     ding_bot_model_dir = os.path.join(Path(__file__).parent.parent, 'models')  # Ding-Bot/models
-    chess_bot_model_dir = os.path.join(chess_bot_path, 'models')  # Chess-Bot/models
+    chess_bot_model_dir = os.path.join(chess_bot_path, 'models') if os.path.exists(chess_bot_path) else None  # Chess-Bot/models (may not exist in judge system)
     
     # Use Ding-Bot/models if it exists (even if empty - for standalone deployment)
     # Otherwise use Chess-Bot/models (for development)
