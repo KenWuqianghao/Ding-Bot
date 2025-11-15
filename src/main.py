@@ -94,8 +94,8 @@ engine = None
 # Hugging Face model repository (hardcoded for submission)
 # TODO: Replace with your actual Hugging Face repository ID
 HUGGINGFACE_MODEL_REPO = 'KenWu/chess-bot-model'  # CHANGE THIS TO YOUR REPO
-# Fallback to environment variable if not set (for testing)
-if HUGGINGFACE_MODEL_REPO == 'KenWu/chess-bot-model':
+# Fallback to environment variable only if still using placeholder (for testing)
+if HUGGINGFACE_MODEL_REPO == 'YOUR_USERNAME/chess-bot-model':
     HUGGINGFACE_MODEL_REPO = os.environ.get('HUGGINGFACE_MODEL_REPO', None)
 
 def download_model_from_huggingface(repo_id: str, output_dir: str = "models") -> str:
@@ -155,7 +155,19 @@ def initialize_engine():
     global engine
     
     # Priority: 1) Latest FINAL_BEST_MODEL (current training), 2) Latest resumed model, 3) Latest epoch checkpoint, 4) Most recent .pth, 5) Download from Hugging Face
-    model_dir = os.path.join(chess_bot_path, 'models')
+    # Check Ding-Bot/models first (for standalone deployment), then fall back to Chess-Bot/models
+    ding_bot_model_dir = os.path.join(Path(__file__).parent.parent, 'models')  # Ding-Bot/models
+    chess_bot_model_dir = os.path.join(chess_bot_path, 'models')  # Chess-Bot/models
+    
+    # Use Ding-Bot/models if it exists (even if empty - for standalone deployment)
+    # Otherwise use Chess-Bot/models (for development)
+    if os.path.exists(ding_bot_model_dir):
+        model_dir = ding_bot_model_dir
+        print(f"Using Ding-Bot models directory: {model_dir}")
+    else:
+        model_dir = chess_bot_model_dir
+        print(f"Using Chess-Bot models directory: {model_dir}")
+    
     model_path = None
     
     if os.path.exists(model_dir):
@@ -183,24 +195,112 @@ def initialize_engine():
                     print(f"Using most recent model: {model_files[0]}")
     
     # If no local model found, try downloading from Hugging Face
+    # IMPORTANT: If using Ding-Bot/models (standalone), always try Hugging Face first
+    # Only fall back to Chess-Bot/models if Hugging Face fails and we're in development mode
     if not model_path or not os.path.exists(model_path):
-        if HUGGINGFACE_MODEL_REPO:
+        # If we're using Ding-Bot/models (standalone deployment), try Hugging Face
+        if model_dir == ding_bot_model_dir and HUGGINGFACE_MODEL_REPO:
+            print(f"\nNo local model found in Ding-Bot/models. Attempting to download from Hugging Face...")
+            print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")
+            print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")
+            try:
+                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
+                if downloaded_path and os.path.exists(downloaded_path):
+                    model_path = downloaded_path
+                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                else:
+                    # If download fails and Chess-Bot/models exists, try that as fallback
+                    if os.path.exists(chess_bot_model_dir):
+                        print(f"\nHugging Face download failed. Falling back to Chess-Bot/models...")
+                        model_dir = chess_bot_model_dir
+                        # Retry finding model in Chess-Bot/models
+                        if os.path.exists(model_dir):
+                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                            if final_models:
+                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, final_models[0])
+                                print(f"Using fallback model: {final_models[0]}")
+                            else:
+                                epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
+                                if epoch_models:
+                                    epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, epoch_models[0])
+                                    print(f"Using fallback epoch model: {epoch_models[0]}")
+                                else:
+                                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+                                    if model_files:
+                                        model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                        model_path = os.path.join(model_dir, model_files[0])
+                                        print(f"Using fallback model: {model_files[0]}")
+                    
+                    if not model_path or not os.path.exists(model_path):
+                        raise FileNotFoundError(
+                            f"Model download from Hugging Face failed and no fallback model found. "
+                            f"Repository: {HUGGINGFACE_MODEL_REPO}. "
+                            f"Please verify the repository exists and contains a .pth file."
+                        )
+            except Exception as e:
+                error_msg = str(e)
+                print(f"ERROR during Hugging Face download: {error_msg}")
+                # Try fallback to Chess-Bot/models if available
+                if os.path.exists(chess_bot_model_dir):
+                    print(f"\nTrying fallback to Chess-Bot/models...")
+                    model_dir = chess_bot_model_dir
+                    final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                    if final_models:
+                        final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, final_models[0])
+                        print(f"Using fallback model: {final_models[0]}")
+                    else:
+                        raise FileNotFoundError(
+                            f"Failed to download model from Hugging Face and no fallback available. "
+                            f"Repository: {HUGGINGFACE_MODEL_REPO}. "
+                            f"Error: {error_msg}. "
+                            f"Please verify: 1) Repository exists at https://huggingface.co/{HUGGINGFACE_MODEL_REPO}, "
+                            f"2) Repository is public, 3) Repository contains .pth files, "
+                            f"4) huggingface_hub is installed (pip install huggingface_hub)"
+                        ) from e
+                else:
+                    raise FileNotFoundError(
+                        f"Failed to download model from Hugging Face. "
+                        f"Repository: {HUGGINGFACE_MODEL_REPO}. "
+                        f"Error: {error_msg}. "
+                        f"Please verify: 1) Repository exists at https://huggingface.co/{HUGGINGFACE_MODEL_REPO}, "
+                        f"2) Repository is public, 3) Repository contains .pth files, "
+                        f"4) huggingface_hub is installed (pip install huggingface_hub)"
+                    ) from e
+        elif HUGGINGFACE_MODEL_REPO:
+            # Using Chess-Bot/models but still try Hugging Face if no model found
             print(f"\nNo local model found. Attempting to download from Hugging Face...")
             print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")
-            downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
-            if downloaded_path and os.path.exists(downloaded_path):
-                model_path = downloaded_path
-                print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
-            else:
+            print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")
+            try:
+                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
+                if downloaded_path and os.path.exists(downloaded_path):
+                    model_path = downloaded_path
+                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                else:
+                    raise FileNotFoundError(
+                        f"Model download from Hugging Face returned None or file doesn't exist. "
+                        f"Repository: {HUGGINGFACE_MODEL_REPO}. "
+                        f"Please verify the repository exists and contains a .pth file."
+                    )
+            except Exception as e:
+                error_msg = str(e)
+                print(f"ERROR during Hugging Face download: {error_msg}")
                 raise FileNotFoundError(
-                    f"Model not found locally and download from Hugging Face failed. "
-                    f"Please check HUGGINGFACE_MODEL_REPO='{HUGGINGFACE_MODEL_REPO}' or provide model locally."
-                )
+                    f"Failed to download model from Hugging Face. "
+                    f"Repository: {HUGGINGFACE_MODEL_REPO}. "
+                    f"Error: {error_msg}. "
+                    f"Please verify: 1) Repository exists at https://huggingface.co/{HUGGINGFACE_MODEL_REPO}, "
+                    f"2) Repository is public, 3) Repository contains .pth files, "
+                    f"4) huggingface_hub is installed (pip install huggingface_hub)"
+                ) from e
         else:
             raise FileNotFoundError(
-                f"Model not found in {model_dir}. "
-                "Please train a model first, set HUGGINGFACE_MODEL_REPO environment variable, "
-                "or update the model path."
+                f"Model not found in {model_dir} and HUGGINGFACE_MODEL_REPO is not set. "
+                "Please train a model first, set HUGGINGFACE_MODEL_REPO in src/main.py, "
+                "or provide model locally."
             )
     
     # Load neural network model
