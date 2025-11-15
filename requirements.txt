@@ -16,3 +16,4 @@ typing-inspection==0.4.2
 typing_extensions==4.15.0
 uvicorn==0.38.0
 huggingface_hub>=0.20.0
+torch>=2.0.0
