@@ -165,7 +165,8 @@ class NNEvaluator:
         """
         # Terminal conditions
         if board.is_checkmate():
-            return -10000 if board.turn == chess.WHITE else 10000
+            # Current player is checkmated (lost) - always return negative
+            return -10000
         if board.is_stalemate() or board.is_insufficient_material():
             return 0.0
         
@@ -235,13 +236,41 @@ class NNEvaluator:
             # If model outputs from side-to-move perspective, material eval should also be from Black's perspective
             material_eval = -material_eval  # Convert white's perspective to black's perspective
         
-        # DRAMATICALLY increase traditional heuristic weight to prevent blunders
-        # Model is still undertrained - prioritize safety over NN evaluation
-        if abs(nn_value) < 0.1:
-            # Undertrained: 30% NN, 70% traditional (heavily prioritize safety)
+        # CRITICAL FIX: If model outputs wrong perspective, detect and fix it
+        # For Black positions: material_eval is negated (negative = Black worse)
+        # If model learned correctly: centipawns should also be negative when Black is worse
+        # If model outputs from White's perspective: centipawns positive means White better = Black worse
+        # Detection: if material_eval and centipawns have opposite signs for Black positions,
+        # and the disagreement is significant, the model likely outputs wrong perspective
+        if not board.turn:  # Black to move
+            # Both should be negative if Black is worse, both positive if Black is better
+            # If they have opposite signs with strong values, model outputs wrong perspective
+            if (material_eval < -100 and centipawns > 100) or (material_eval > 100 and centipawns < -100):
+                # Strong disagreement: negate centipawns to fix perspective
+                centipawns = -centipawns
+        
+        # Blend NN evaluation with traditional heuristics
+        # Prioritize material eval for captures and tactical positions to prevent blunders
+        # Check if this is a tactical position (captures available, checks, hanging pieces)
+        is_tactical = False
+        if board.is_check():
+            is_tactical = True
+        else:
+            # Check for captures
+            for move in board.legal_moves:
+                if board.is_capture(move):
+                    is_tactical = True
+                    break
+            # Check for hanging pieces
+            if abs(material_eval) > 200:  # Significant material imbalance
+                is_tactical = True
+        
+        if is_tactical:
+            # Tactical positions: prioritize material eval to prevent blunders
+            # 30% NN, 70% material (material eval catches captures and hanging pieces)
             blended_eval = 0.3 * centipawns + 0.7 * material_eval
         else:
-            # Normal: 50% NN, 50% traditional (equal weight for safety)
+            # Quiet positions: equal weight
             blended_eval = 0.5 * centipawns + 0.5 * material_eval
         
         # Cache the result (limit cache size to avoid memory issues)
@@ -274,7 +303,8 @@ class NNEvaluator:
             
             # Terminal conditions
             if board.is_checkmate():
-                results.append(-10000 if board.turn == chess.WHITE else 10000)
+                # Current player is checkmated (lost) - always return negative
+                results.append(-10000)
                 continue
             if board.is_stalemate() or board.is_insufficient_material():
                 results.append(0.0)
@@ -325,13 +355,26 @@ class NNEvaluator:
                 if not board.turn:
                     material_eval = -material_eval
                 
-                # DRAMATICALLY increase traditional heuristic weight to prevent blunders
-                # Model is still undertrained - prioritize safety over NN evaluation
-                if abs(nn_value) < 0.1:
-                    # Undertrained: 30% NN, 70% traditional (heavily prioritize safety)
+                # CRITICAL FIX: Detect and fix wrong perspective (same as evaluate())
+                if not board.turn:  # Black to move
+                    if (material_eval < -100 and centipawns > 100) or (material_eval > 100 and centipawns < -100):
+                        centipawns = -centipawns
+                
+                # Check if tactical position
+                is_tactical = False
+                if board.is_check():
+                    is_tactical = True
+                else:
+                    for move in board.legal_moves:
+                        if board.is_capture(move):
+                            is_tactical = True
+                            break
+                    if abs(material_eval) > 200:
+                        is_tactical = True
+                
+                if is_tactical:
                     blended_eval = 0.3 * centipawns + 0.7 * material_eval
                 else:
-                    # Normal: 50% NN, 50% traditional (equal weight for safety)
                     blended_eval = 0.5 * centipawns + 0.5 * material_eval
                 
                 # Cache result
@@ -382,9 +425,9 @@ class NNEvaluator:
         for move in legal_moves:
             policy_dict[move] = uniform_prob
         
-        # Adjust value for side to move
-        if not board.turn:
-            value = -value
+        # Model should already output from side-to-move perspective
+        # Don't negate here - that would double-negate for Black
+        # If model didn't learn correctly, we'd need to detect and fix at evaluate() level
         
         return value * 1000.0, policy_dict
 
