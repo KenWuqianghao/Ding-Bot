@@ -39,48 +39,46 @@ from utils.time_management import allocate_time
 
 def detect_model_size(checkpoint: dict) -> str:
     """
-    Detect model size from checkpoint by examining conv1 weight shape.
+    Detect model size from checkpoint by examining architecture.
     
     Args:
         checkpoint: Model checkpoint dictionary
         
     Returns:
-        'base', 'large', or 'xl'
+        'base', 'large', 'xl', 'leela-tiny', 'leela', or 'leela-large'
     """
     state_dict = checkpoint.get('model_state_dict', checkpoint)
     
-    if 'conv1.weight' in state_dict:
-        conv1_out_channels = state_dict['conv1.weight'].shape[0]
-        if conv1_out_channels == 64:
-            return 'base'
-        elif conv1_out_channels == 128:
-            return 'large'
-        elif conv1_out_channels == 256:
-            # Could be XL or Leela - check for conv_input (Leela) vs conv1 (XL)
-            if 'conv_input.weight' in state_dict:
-                return 'leela'
-            return 'xl'
-        elif conv1_out_channels == 384:
-            return 'leela-large'
-    
-    # Check for Leela architecture (has conv_input)
+    # PRIORITY 1: Check for Leela architecture FIRST (has conv_input, not conv1)
+    # This must come before conv1 check to correctly identify Leela models
     if 'conv_input.weight' in state_dict:
         conv_input_out = state_dict['conv_input.weight'].shape[0]
         if conv_input_out == 96:
             return 'leela-tiny'  # LeelaChessNetTiny
         elif conv_input_out == 256:
-            return 'leela'
+            # Could be leela or leela-large - check number of residual blocks
+            max_block = -1
+            for k in state_dict.keys():
+                if 'residual_blocks.' in k:
+                    parts = k.split('.')
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        max_block = max(max_block, int(parts[1]))
+            num_blocks = max_block + 1 if max_block >= 0 else 6
+            if num_blocks >= 10:
+                return 'leela-large'
+            else:
+                return 'leela'
         elif conv_input_out == 384:
             return 'leela-large'
     
-    # Check for LeelaChessNetTiny by residual_blocks structure (has residual_blocks.0, etc.)
+    # PRIORITY 2: Check for LeelaChessNetTiny by residual_blocks structure
+    # (has residual_blocks.0, etc. with 96 channels)
     if 'residual_blocks.0.conv1.weight' in state_dict:
-        # Check channels in first residual block to distinguish tiny from regular
         residual_channels = state_dict['residual_blocks.0.conv1.weight'].shape[0]
         if residual_channels == 96:
             return 'leela-tiny'
         elif residual_channels == 256:
-            # Could be leela or leela-large - check number of blocks
+            # Check number of blocks
             max_block = -1
             for k in state_dict.keys():
                 if 'residual_blocks.' in k:
@@ -95,7 +93,19 @@ def detect_model_size(checkpoint: dict) -> str:
         elif residual_channels == 384:
             return 'leela-large'
     
-    # Fallback: check for residual block naming pattern
+    # PRIORITY 3: Check for ChessNet architecture (has conv1, not conv_input)
+    if 'conv1.weight' in state_dict:
+        conv1_out_channels = state_dict['conv1.weight'].shape[0]
+        if conv1_out_channels == 64:
+            return 'base'
+        elif conv1_out_channels == 128:
+            return 'large'
+        elif conv1_out_channels == 256:
+            return 'xl'
+        elif conv1_out_channels == 384:
+            return 'leela-large'  # Shouldn't happen, but handle it
+    
+    # Fallback: check for residual block naming pattern (old ChessNet variants)
     if 'res_block1_conv.weight' in state_dict:
         # Check if it's XL (has more residual blocks)
         if 'res_block4_conv.weight' in state_dict:
