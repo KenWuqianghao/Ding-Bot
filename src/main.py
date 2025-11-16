@@ -163,8 +163,16 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
+        # Priority 1: Look for latest leela_best model (newly trained advanced model) - HIGHEST PRIORITY
+        if not model_path:
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+            if leela_best_models:
+                # Sort by modification time, most recent first
+                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, leela_best_models[0])
+                print(f"✓ Using latest leela_best model: {leela_best_models[0]}")
         # BRANCH: distilled-model
-        # Priority 1: Look for DISTILLED or tiny_model (distilled models) - HIGHEST PRIORITY
+        # Priority 2: Look for DISTILLED or tiny_model (distilled models)
         if not model_path:
             distilled_models = [f for f in os.listdir(model_dir) if (f.startswith('DISTILLED_') or f.startswith('tiny_model_')) and f.endswith('.pth')]
             if distilled_models:
@@ -178,7 +186,7 @@ def initialize_engine():
                     distilled_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                     model_path = os.path.join(model_dir, distilled_models[0])
                     print(f"✓ [BRANCH: distilled-model] Using distilled model: {distilled_models[0]}")
-        # Priority 2: Look for latest epoch checkpoint
+        # Priority 3: Look for latest epoch checkpoint
         if not model_path:
             epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
             if epoch_models:
@@ -280,7 +288,7 @@ def initialize_engine():
                             final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, final_models[0])
                             print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
-                    else:
+                    if not model_path:
                         raise FileNotFoundError(
                             f"Failed to download model from Hugging Face and no fallback available. "
                             f"Repository: {HUGGINGFACE_MODEL_REPO}. "
