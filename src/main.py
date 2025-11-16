@@ -192,9 +192,16 @@ def initialize_engine():
     
     if os.path.exists(model_dir):
         # HARDCODED BRANCH: base-advanced-opening
-        # Priority 1: Look for BASE_ADVANCED with openings_book (opening-trained)
+        # Priority 1: Look for BASE_ADVANCED models (with openings_book preferred)
         if not model_path:
-            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_' in f and f.endswith('.pth')]
+            base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+            if base_opening_models:
+                base_opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, base_opening_models[0])
+                print(f"✓ [BRANCH: base-advanced-opening] Using BASE_ADVANCED with openings: {base_opening_models[0]}")
+        # Priority 2: Look for any BASE_ADVANCED model
+        if not model_path:
+            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
             if base_models:
                 base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, base_models[0])
@@ -229,7 +236,7 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: base-advanced-opening
                     # After downloading, re-check for BASE_ADVANCED models first
-                    base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_' in f and f.endswith('.pth')]
+                    base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
                     if base_models:
                         base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, base_models[0])
@@ -252,7 +259,7 @@ def initialize_engine():
                         model_dir = chess_bot_model_dir
                         # HARDCODED BRANCH: base-advanced-opening - prioritize BASE_ADVANCED
                         if os.path.exists(model_dir):
-                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_' in f and f.endswith('.pth')]
+                            base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
                             if base_models:
                                 base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                                 model_path = os.path.join(model_dir, base_models[0])
@@ -284,7 +291,7 @@ def initialize_engine():
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
                     # HARDCODED BRANCH: base-advanced-opening - prioritize BASE_ADVANCED
-                    base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_' in f and f.endswith('.pth')]
+                    base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
                     if base_models:
                         base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, base_models[0])
@@ -323,7 +330,7 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: base-advanced-opening
                     # After downloading, re-check for BASE_ADVANCED models first
-                    base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_' in f and f.endswith('.pth')]
+                    base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
                     if base_models:
                         base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, base_models[0])
