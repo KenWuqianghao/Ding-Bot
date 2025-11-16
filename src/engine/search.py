@@ -51,8 +51,8 @@ class MinimaxSearch:
         self.history: Dict[Tuple[int, int], int] = defaultdict(int)
         
         # Quiescence search depth
-        # Increased to see more captures and prevent material blunders
-        self.quiescence_depth = 4  # Reduced from 6 to 4 for speed - material check in quiescence handles blunders
+        # Reduced for speed - still catches most tactical sequences
+        self.quiescence_depth = 3  # Reduced from 4 to 3 for faster search
         
         # Search optimization flags
         # DISABLED aggressive pruning - may cause bad moves
@@ -362,13 +362,18 @@ class MinimaxSearch:
         Returns:
             Tuple of (best_move, score) from current player's perspective
         """
-        # Check time limit (only at root or after significant work)
-        # Don't check on every recursive call - too expensive
-        if self.time_limit and self.start_time and ply == 0:
-            elapsed = time.time() - self.start_time
-            if elapsed >= self.time_limit * 0.95:  # Use 95% of time
-                score = self.evaluator.evaluate(board)
-                return None, score
+        # Check time limit more frequently for faster termination
+        # Check every N nodes to balance overhead vs responsiveness
+        if self.time_limit and self.start_time:
+            # Check more frequently at root, less frequently deeper
+            check_frequency = 100 if ply == 0 else 1000
+            if self.nodes_searched % check_frequency == 0:
+                elapsed = time.time() - self.start_time
+                # More aggressive time cutoff for short time limits
+                cutoff_ratio = 0.90 if self.time_limit < 1.0 else 0.95
+                if elapsed >= self.time_limit * cutoff_ratio:
+                    score = self.evaluator.evaluate(board)
+                    return None, score
         
         self.nodes_searched += 1
         
@@ -458,32 +463,9 @@ class MinimaxSearch:
         static_eval = self.evaluator.evaluate(board) if (self.use_futility or self.use_delta) else None
         
         for move_idx, move in enumerate(legal_moves):
-            # CRITICAL SAFETY CHECK: Evaluate move BEFORE making it to see if it hangs pieces
-            # This prevents the engine from making moves that hang pieces
-            piece_moved = board.piece_at(move.from_square)
-            if piece_moved and piece_moved.piece_type != chess.KING and not board.is_capture(move):
-                # Check if this move leaves a piece hanging
-                # Only check quiet moves (captures are already prioritized)
-                material_before = self.evaluator._material_eval(board)
-                board.push(move)
-                material_after = self.evaluator._material_eval(board)
-                board.pop()
-                
-                # Material eval is always from White's perspective
-                # If current player is White: material drop = material_before - material_after
-                # If current player is Black: material drop = material_after - material_before (negated perspective)
-                if board.turn == chess.WHITE:
-                    material_drop = material_before - material_after
-                else:
-                    material_drop = material_after - material_before  # Black's loss = White's gain
-                
-                # If material dropped by more than 250cp (2.5 pawns), likely hung a piece
-                # Use 250cp threshold to catch knights (320cp) and other pieces
-                if material_drop > 250:  # Significant material loss (knights are 320cp)
-                    # This move hangs a piece - skip it unless it's a check
-                    if not board.gives_check(move):
-                        # Skip quiet moves that hang pieces
-                        continue
+            # SIMPLIFIED: Skip expensive material check - move ordering already handles this
+            # The free capture detection in move ordering catches hanging pieces
+            # This check was too expensive and causing slowdowns
             
             # Delta pruning: skip captures that can't improve alpha
             if self.use_delta and board.is_capture(move) and static_eval is not None:
@@ -635,27 +617,46 @@ class MinimaxSearch:
         beta_window = math.inf
         
         # Start with depth 1 and increase
-        # For very short time limits, reduce max depth to ensure we complete at least depth 2-3
+        # For very short time limits, reduce max depth aggressively to ensure completion
         effective_max_depth = self.max_depth
-        if self.time_limit and self.time_limit < 1.0:
-            # For <1s, limit to depth 4-5 max to ensure completion
-            effective_max_depth = min(self.max_depth, 5)
+        if self.time_limit:
+            if self.time_limit < 0.5:
+                # Very short: depth 2-3 max
+                effective_max_depth = min(self.max_depth, 3)
+            elif self.time_limit < 1.0:
+                # Short: depth 4 max
+                effective_max_depth = min(self.max_depth, 4)
+            elif self.time_limit < 2.0:
+                # Medium: depth 5-6 max
+                effective_max_depth = min(self.max_depth, 6)
+            # For >= 2s, use full depth
         
         for depth in range(1, effective_max_depth + 1):
             # Check if time is up (check more frequently for short time controls)
             if self.time_limit is not None:
                 elapsed = time.time() - self.start_time
                 
-                # For very short time limits (< 2s), be more aggressive
-                if self.time_limit < 2.0:
-                    # Use 90% of time, save 10% for safety
+                # More aggressive time management for all time limits
+                if self.time_limit < 0.5:
+                    # Very short: use 85% of time, stop very early
+                    if elapsed >= self.time_limit * 0.85:
+                        break
+                    if depth >= 2 and elapsed > self.time_limit * 0.60:
+                        break
+                elif self.time_limit < 1.0:
+                    # Short: use 88% of time
+                    if elapsed >= self.time_limit * 0.88:
+                        break
+                    if depth >= 2 and elapsed > self.time_limit * 0.65:
+                        break
+                elif self.time_limit < 2.0:
+                    # Medium: use 90% of time
                     if elapsed >= self.time_limit * 0.90:
                         break
-                    # Stop early if we've done at least depth 2 and time is running out
-                    if depth >= 2 and elapsed > self.time_limit * 0.70:
+                    if depth >= 3 and elapsed > self.time_limit * 0.70:
                         break
                 else:
-                    # Normal time management: use 95% of time
+                    # Normal: use 95% of time
                     if elapsed >= self.time_limit * 0.95:
                         break
                 
@@ -664,13 +665,17 @@ class MinimaxSearch:
                 if depth >= 3 and elapsed > 0.5:  # Need at least 0.5s of data
                     time_per_depth = elapsed / depth
                     estimated_next = time_per_depth * (depth + 1)
-                    # Stop if estimated time would exceed limit
-                    if self.time_limit < 2.0:
-                        # Very aggressive for short time
+                    # Stop if estimated time would exceed limit (more aggressive)
+                    if self.time_limit < 0.5:
+                        if estimated_next > self.time_limit * 0.80:
+                            break
+                    elif self.time_limit < 1.0:
                         if estimated_next > self.time_limit * 0.85:
                             break
+                    elif self.time_limit < 2.0:
+                        if estimated_next > self.time_limit * 0.90:
+                            break
                     else:
-                        # Normal threshold
                         if estimated_next > self.time_limit * 0.95:
                             break
             
