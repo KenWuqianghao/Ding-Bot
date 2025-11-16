@@ -348,35 +348,30 @@ def initialize_engine():
                         f"2) Repository is public, 3) Repository contains .pth files, "
                         f"4) huggingface_hub is installed (pip install huggingface_hub)"
                     ) from e
-        elif HUGGINGFACE_MODEL_REPO:            # Using Chess-Bot/models but still try Hugging Face if no model found            print(f"\nNo local model found. Attempting to download from Hugging Face...")            print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")            print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")            try:                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir, branch_priority=hf_download_priority)                if downloaded_path and os.path.exists(downloaded_path):                    # HARDCODED BRANCH: final-best-model                    # After downloading, re-check for FINAL_BEST_MODEL models first                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]                    if opening_models:                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)                        model_path = os.path.join(model_dir, opening_models[0])                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")                    else:                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]                        if final_models:                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)                            model_path = os.path.join(model_dir, final_models[0])                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")                                        if not model_path:                        # Use downloaded model only if no FINAL_BEST_MODEL found                        model_path = downloaded_path                        print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")                else:                    raise FileNotFoundError(                        f"Model download from Hugging Face returned None or file doesn't exist. "                        f"Repository: {HUGGINGFACE_MODEL_REPO}. "                        f"Please verify the repository exists and contains a .pth file."                    )            except Exception as e:                error_msg = str(e)                print(f"ERROR during Hugging Face download: {error_msg}")                raise FileNotFoundError(                    f"Failed to download model from Hugging Face. "                    f"Repository: {HUGGINGFACE_MODEL_REPO}. "                    f"Error: {error_msg}. "                    f"Please verify: 1) Repository exists at https://huggingface.co/{HUGGINGFACE_MODEL_REPO}, "                    f"2) Repository is public, 3) Repository contains .pth files, "                    f"4) huggingface_hub is installed (pip install huggingface_hub)"                ) from e                        else:
-                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                            if base_models:
-                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, base_models[0])
-                                print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED after download: {base_models[0]}")
-                    elif current_branch == 'leela':
-                        # Look for leela_best models
-                        leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
-                        if leela_models:
-                            leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, leela_models[0])
-                            print(f"✓ [BRANCH: leela] Found leela_best model after download: {leela_models[0]}")
-                    elif current_branch == 'main':
-                        # Look for leela_best first, then BASE_ADVANCED
-                        leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
-                        if leela_models:
-                            leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, leela_models[0])
-                            print(f"✓ [BRANCH: main] Found leela_best model after download: {leela_models[0]}")
-                        else:
-                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                            if base_models:
-                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, base_models[0])
-                                print(f"✓ [BRANCH: main] Found BASE_ADVANCED after download: {base_models[0]}")
+        elif HUGGINGFACE_MODEL_REPO:
+            # Using Chess-Bot/models but still try Hugging Face if no model found
+            print(f"\nNo local model found. Attempting to download from Hugging Face...")
+            print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")
+            print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")
+            try:
+                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir, branch_priority=hf_download_priority)
+                if downloaded_path and os.path.exists(downloaded_path):
+                    # HARDCODED BRANCH: final-best-model
+                    # After downloading, re-check for FINAL_BEST_MODEL models first
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
                     
                     if not model_path:
-                        # Use downloaded model only if no branch-specific model found
+                        # Use downloaded model only if no FINAL_BEST_MODEL found
                         model_path = downloaded_path
                         print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
@@ -396,6 +391,7 @@ def initialize_engine():
                     f"2) Repository is public, 3) Repository contains .pth files, "
                     f"4) huggingface_hub is installed (pip install huggingface_hub)"
                 ) from e
+        else:
         else:
             raise FileNotFoundError(
                 f"Model not found in {model_dir} and HUGGINGFACE_MODEL_REPO is not set. "
