@@ -23,7 +23,18 @@ else:
     sys.path.remove(ding_bot_src_path_str)
     sys.path.insert(0, ding_bot_src_path_str)
 
-from .utils import chess_manager, GameContext
+# Import utils - handle both relative and absolute imports
+try:
+    from .utils import chess_manager, GameContext
+except ImportError:
+    # Fallback for when running as script or when relative imports fail
+    # Import directly from decorator module to avoid relative import issues
+    utils_path = Path(__file__).parent / 'utils'
+    if str(utils_path.parent) not in sys.path:
+        sys.path.insert(0, str(utils_path.parent))
+    # Import directly from decorator to avoid utils/__init__.py relative import issues
+    from utils.decorator import chess_manager, GameContext
+
 from chess import Move
 
 # Import torch (check if available)
@@ -152,37 +163,45 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
-        # Priority 1: Look for opening-trained models (highest priority for better openings!)
-        opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-        if opening_models:
+        # Priority 0: Look for BASE_ADVANCED models (for testing specific models)
+        base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+        if base_advanced_models:
             # Sort by modification time, most recent first
-            opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-            model_path = os.path.join(model_dir, opening_models[0])
-            print(f"✓ Using opening-trained model: {opening_models[0]}")
-            print(f"  This model was fine-tuned on 5,006 opening positions for better opening play!")
+            base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+            model_path = os.path.join(model_dir, base_advanced_models[0])
+            print(f"✓ Using BASE_ADVANCED model: {base_advanced_models[0]}")
         else:
-            # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
-            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-            if final_models:
+            # Priority 1: Look for opening-trained models (highest priority for better openings!)
+            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+            if opening_models:
                 # Sort by modification time, most recent first
-                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, final_models[0])
-                print(f"Using latest FINAL_BEST_MODEL: {final_models[0]}")
+                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, opening_models[0])
+                print(f"✓ Using opening-trained model: {opening_models[0]}")
+                print(f"  This model was fine-tuned on 5,006 opening positions for better opening play!")
             else:
-                # Priority 3: Look for latest epoch checkpoint
-                epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
-                if epoch_models:
+                # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
+                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                if final_models:
                     # Sort by modification time, most recent first
-                    epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                    model_path = os.path.join(model_dir, epoch_models[0])
-                    print(f"Using latest epoch checkpoint: {epoch_models[0]}")
+                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, final_models[0])
+                    print(f"Using latest FINAL_BEST_MODEL: {final_models[0]}")
                 else:
-                    # Fallback to most recent .pth file
-                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
-                    if model_files:
-                        model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, model_files[0])
-                        print(f"Using most recent model: {model_files[0]}")
+                    # Priority 3: Look for latest epoch checkpoint
+                    epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
+                    if epoch_models:
+                        # Sort by modification time, most recent first
+                        epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, epoch_models[0])
+                        print(f"Using latest epoch checkpoint: {epoch_models[0]}")
+                    else:
+                        # Fallback to most recent .pth file
+                        model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+                        if model_files:
+                            model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, model_files[0])
+                            print(f"Using most recent model: {model_files[0]}")
     
     # If no local model found, try downloading from Hugging Face
     # IMPORTANT: If using Ding-Bot/models (standalone), always try Hugging Face first
