@@ -237,6 +237,15 @@ class ChessEngine:
                         model = ChessNet()
                     
                     model.load_state_dict(checkpoint['model_state_dict'])
+                    
+                    # Handle quantized models (FP16)
+                    quantization = checkpoint.get('quantization', None)
+                    if quantization == 'fp16':
+                        # FP16 on CPU is problematic - convert to FP32 for CPU, keep FP16 for CUDA
+                        if self.device.type == 'cuda':
+                            model = model.half()  # Convert to FP16 for GPU
+                        # Keep as FP32 on CPU (FP16 on CPU is slower and can cause errors)
+                    
                     model.to(self.device)
                     model.eval()
                     models.append(model)
@@ -305,8 +314,13 @@ class ChessEngine:
                 # Handle quantized models (FP16)
                 quantization = checkpoint.get('quantization', None)
                 if quantization == 'fp16':
-                    self.model = self.model.half()  # Convert to FP16
-                    print(f"Loaded FP16 quantized model")
+                    # FP16 on CPU is problematic - convert to FP32 for CPU, keep FP16 for CUDA
+                    if self.device.type == 'cuda':
+                        self.model = self.model.half()  # Convert to FP16 for GPU
+                        print(f"Loaded FP16 quantized model (GPU)")
+                    else:
+                        # Keep as FP32 on CPU (FP16 on CPU is slower and can cause errors)
+                        print(f"Loaded FP16 quantized model (converted to FP32 for CPU)")
                 
                 self.model.to(self.device)
                 self.model.eval()
