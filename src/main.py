@@ -163,8 +163,16 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
+        # Priority 1: Look for latest leela_best model (newly trained advanced model) - HIGHEST PRIORITY
+        if not model_path:
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+            if leela_best_models:
+                # Sort by modification time, most recent first
+                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, leela_best_models[0])
+                print(f"✓ Using latest leela_best model: {leela_best_models[0]}")
         # BRANCH: final-best-model
-        # Priority 1: Look for FINAL_BEST_MODEL with openings (opening-trained) - HIGHEST PRIORITY
+        # Priority 2: Look for FINAL_BEST_MODEL with openings (opening-trained)
         if not model_path:
             opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
             if opening_models:
@@ -173,7 +181,7 @@ def initialize_engine():
                 model_path = os.path.join(model_dir, opening_models[0])
                 print(f"✓ [BRANCH: final-best-model] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
                 print(f"  This model was fine-tuned on opening positions for better opening play!")
-        # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
+        # Priority 3: Look for latest FINAL_BEST_MODEL (current training run)
         if not model_path:
             final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
             if final_models:
@@ -181,7 +189,7 @@ def initialize_engine():
                 final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, final_models[0])
                 print(f"✓ [BRANCH: final-best-model] Using latest FINAL_BEST_MODEL: {final_models[0]}")
-        # Priority 3: Look for latest epoch checkpoint (leela_best removed - branch-specific models only)
+        # Priority 4: Look for latest epoch checkpoint
         if not model_path:
             epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
             if epoch_models:
@@ -283,7 +291,7 @@ def initialize_engine():
                             final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, final_models[0])
                             print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
-                    else:
+                    if not model_path:
                         raise FileNotFoundError(
                             f"Failed to download model from Hugging Face and no fallback available. "
                             f"Repository: {HUGGINGFACE_MODEL_REPO}. "
