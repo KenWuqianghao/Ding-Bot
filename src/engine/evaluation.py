@@ -335,6 +335,10 @@ class NNEvaluator:
         self.cache_misses += 1
         board_tensor = fen_to_tensor(fen).unsqueeze(0).to(self.device)
         
+        # Convert input to FP16 if model is FP16 (required for GPU FP16 models)
+        if self.is_fp16:
+            board_tensor = board_tensor.half()
+        
         with torch.no_grad():
             output = self.model(board_tensor)
             nn_value = output['value'].item()
@@ -507,6 +511,10 @@ class NNEvaluator:
             # Stack into batch
             batch_tensor = torch.cat(batch_tensors, dim=0).to(self.device)
             
+            # Convert input to FP16 if model is FP16 (required for GPU FP16 models)
+            if self.is_fp16:
+                batch_tensor = batch_tensor.half()
+            
             # Batch inference
             with torch.no_grad():
                 output = self.model(batch_tensor)
@@ -594,6 +602,11 @@ class NNEvaluator:
         """
         fen = board.fen()
         board_tensor = fen_to_tensor(fen).unsqueeze(0).to(self.device)
+        
+        # Convert input to FP16 if model is FP16 (required for GPU FP16 models)
+        if self.is_fp16:
+            board_tensor = board_tensor.half()
+        
         legal_moves = list(board.legal_moves)
         
         with torch.no_grad():
