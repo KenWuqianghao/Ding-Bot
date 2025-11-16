@@ -357,7 +357,6 @@ def initialize_engine():
                     f"4) huggingface_hub is installed (pip install huggingface_hub)"
                 ) from e
         else:
-        else:
             raise FileNotFoundError(
                 f"Model not found in {model_dir} and HUGGINGFACE_MODEL_REPO is not set. "
                 "Please train a model first, set HUGGINGFACE_MODEL_REPO in src/main.py, "
