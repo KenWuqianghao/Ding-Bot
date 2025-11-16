@@ -163,25 +163,22 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
-        # BRANCH: final-best-model
-        # Priority 1: Look for FINAL_BEST_MODEL with openings (opening-trained) - HIGHEST PRIORITY
+        # BRANCH: distilled-model
+        # Priority 1: Look for DISTILLED or tiny_model (distilled models) - HIGHEST PRIORITY
         if not model_path:
-            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-            if opening_models:
-                # Sort by modification time, most recent first
-                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, opening_models[0])
-                print(f"✓ [BRANCH: final-best-model] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
-                print(f"  This model was fine-tuned on opening positions for better opening play!")
-        # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
-        if not model_path:
-            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-            if final_models:
-                # Sort by modification time, most recent first
-                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, final_models[0])
-                print(f"✓ [BRANCH: final-best-model] Using latest FINAL_BEST_MODEL: {final_models[0]}")
-        # Priority 3: Look for latest epoch checkpoint (leela_best removed - branch-specific models only)
+            distilled_models = [f for f in os.listdir(model_dir) if (f.startswith('DISTILLED_') or f.startswith('tiny_model_')) and f.endswith('.pth')]
+            if distilled_models:
+                # Prefer FP16 models (smaller)
+                fp16_models = [f for f in distilled_models if '_fp16' in f]
+                if fp16_models:
+                    fp16_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, fp16_models[0])
+                    print(f"✓ [BRANCH: distilled-model] Using FP16 distilled model: {fp16_models[0]}")
+                else:
+                    distilled_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, distilled_models[0])
+                    print(f"✓ [BRANCH: distilled-model] Using distilled model: {distilled_models[0]}")
+        # Priority 2: Look for latest epoch checkpoint
         if not model_path:
             epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
             if epoch_models:
