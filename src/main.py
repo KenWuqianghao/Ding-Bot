@@ -192,9 +192,9 @@ def initialize_engine():
     
     if os.path.exists(model_dir):
         # HARDCODED BRANCH: leela
-        # Priority 1: Look for leela_best with openings_book (opening-trained)
+        # Priority 1: Look for latest leela_best model
         if not model_path:
-            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and '_openings_' in f and f.endswith('.pth')]
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
             if leela_best_models:
                 leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, leela_best_models[0])
@@ -229,7 +229,7 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: leela
                     # After downloading, re-check for leela_best models first
-                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and '_openings_' in f and f.endswith('.pth')]
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                     if leela_best_models:
                         leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, leela_best_models[0])
@@ -252,7 +252,7 @@ def initialize_engine():
                         model_dir = chess_bot_model_dir
                         # HARDCODED BRANCH: leela - prioritize leela_best
                         if os.path.exists(model_dir):
-                            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and '_openings_' in f and f.endswith('.pth')]
+                            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                             if leela_best_models:
                                 leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                                 model_path = os.path.join(model_dir, leela_best_models[0])
@@ -284,7 +284,7 @@ def initialize_engine():
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
                     # HARDCODED BRANCH: leela - prioritize leela_best
-                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and '_openings_' in f and f.endswith('.pth')]
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                     if leela_best_models:
                         leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, leela_best_models[0])
@@ -323,7 +323,7 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: leela
                     # After downloading, re-check for leela_best models first
-                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and '_openings_' in f and f.endswith('.pth')]
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                     if leela_best_models:
                         leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, leela_best_models[0])
