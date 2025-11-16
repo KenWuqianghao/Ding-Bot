@@ -130,6 +130,11 @@ def download_model_from_huggingface(repo_id: str, output_dir: str = "models", br
             for priority_pattern in branch_priority:
                 matching_files = [f for f in model_files if priority_pattern in f]
                 if matching_files:
+                    # For FINAL_BEST_MODEL, prioritize opening-trained versions
+                    if 'FINAL_BEST_MODEL' in priority_pattern:
+                        opening_files = [f for f in matching_files if '_openings_' in f]
+                        if opening_files:
+                            matching_files = opening_files
                     # Sort by name (most recent timestamp usually comes last alphabetically)
                     target_file = sorted(matching_files)[-1]
                     print(f"  Found branch-specific model matching '{priority_pattern}': {target_file}")
@@ -173,10 +178,11 @@ def initialize_engine():
         current_branch = None
     
     # Define branch-specific model priorities for Hugging Face downloads
+    # Patterns are matched using substring matching (not regex)
     branch_model_priorities = {
         'distilled-model': ['tiny_model', 'DISTILLED'],
-        'base-advanced-opening': ['BASE_ADVANCED', 'BASE_ADVANCED.*openings'],
-        'final-best-model': ['FINAL_BEST_MODEL.*openings', 'FINAL_BEST_MODEL'],
+        'base-advanced-opening': ['BASE_ADVANCED'],
+        'final-best-model': ['FINAL_BEST_MODEL'],  # Will match both openings and regular FINAL_BEST_MODEL
         'leela': ['leela_best'],
         'main': ['leela_best', 'FINAL_BEST_MODEL']
     }
