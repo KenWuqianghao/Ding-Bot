@@ -372,7 +372,7 @@ def initialize_engine():
     
     engine = ChessEngine(
         model_path=model_path,
-        search_depth=2,  # Reduced to 2 to prevent timeouts (prevent timeouts) (adaptive depth handles time limits)
+        search_depth=2,  # Reduced to 2 to prevent timeouts (adaptive depth handles time limits)
         # Adaptive time management ensures we stay within 1min/game:
         # - Opening (0.3s): caps to depth 2
         # - Middlegame (0.8-1.2s): caps to depth 2
