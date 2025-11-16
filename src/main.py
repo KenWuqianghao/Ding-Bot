@@ -192,7 +192,7 @@ def initialize_engine():
     
     if os.path.exists(model_dir):
         # HARDCODED BRANCH: main
-        # Priority 1: Look for FINAL_BEST_MODEL with openings_book (opening-trained)
+        # Priority 1: Look for latest leela_best model (opening-trained)
         if not model_path:
             leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
             if leela_best_models:
