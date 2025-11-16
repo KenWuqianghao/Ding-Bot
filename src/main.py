@@ -194,11 +194,11 @@ def initialize_engine():
         # HARDCODED BRANCH: main
         # Priority 1: Look for FINAL_BEST_MODEL with openings_book (opening-trained)
         if not model_path:
-            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-            if opening_models:
-                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, opening_models[0])
-                print(f"✓ [BRANCH: main] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+            if leela_best_models:
+                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, leela_best_models[0])
+                print(f"✓ [BRANCH: main] Using leela_best: {leela_best_models[0]}")
                 print(f"  This model was fine-tuned on opening positions for better opening play!")
         # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
         if not model_path:
@@ -229,11 +229,11 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: main
                     # After downloading, re-check for FINAL_BEST_MODEL models first
-                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                    if opening_models:
-                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, opening_models[0])
-                        print(f"✓ [BRANCH: main] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                    if leela_best_models:
+                        leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, leela_best_models[0])
+                        print(f"✓ [BRANCH: main] Found leela_best after download: {leela_best_models[0]}")
                     else:
                         final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
                         if final_models:
@@ -252,11 +252,11 @@ def initialize_engine():
                         model_dir = chess_bot_model_dir
                         # HARDCODED BRANCH: main - prioritize FINAL_BEST_MODEL
                         if os.path.exists(model_dir):
-                            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                            if opening_models:
-                                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, opening_models[0])
-                                print(f"✓ [BRANCH: main] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
+                            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                            if leela_best_models:
+                                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, leela_best_models[0])
+                                print(f"✓ [BRANCH: main] Using fallback FINAL_BEST_MODEL: {leela_best_models[0]}")
                             else:
                                 final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
                                 if final_models:
@@ -284,11 +284,11 @@ def initialize_engine():
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
                     # HARDCODED BRANCH: main - prioritize FINAL_BEST_MODEL
-                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                    if opening_models:
-                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, opening_models[0])
-                        print(f"✓ [BRANCH: main] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                    if leela_best_models:
+                        leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, leela_best_models[0])
+                        print(f"✓ [BRANCH: main] Using fallback FINAL_BEST_MODEL: {leela_best_models[0]}")
                     else:
                         final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
                         if final_models:
@@ -323,11 +323,11 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: main
                     # After downloading, re-check for FINAL_BEST_MODEL models first
-                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                    if opening_models:
-                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, opening_models[0])
-                        print(f"✓ [BRANCH: main] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                    if leela_best_models:
+                        leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, leela_best_models[0])
+                        print(f"✓ [BRANCH: main] Found leela_best after download: {leela_best_models[0]}")
                     else:
                         final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
                         if final_models:
