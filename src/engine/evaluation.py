@@ -62,6 +62,11 @@ class NNEvaluator:
             self.device = device
         
         self.model.to(self.device)
+        
+        # Detect if model is FP16 (Half precision) - required for input tensor conversion
+        # Check if any parameter is HalfTensor
+        self.is_fp16 = next(self.model.parameters()).dtype == torch.float16
+        
         # Note: Traditional evaluator removed - NN must be primary (ChessHacks requirement)
         
         # Cache for evaluations (FEN -> score) to avoid redundant NN calls
