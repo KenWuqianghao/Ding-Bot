@@ -81,6 +81,8 @@ else:
 
 # Global engine instance (loaded once)
 engine = None
+# Store engine loading error for debugging
+engine_load_error = None
 
 # Write code here that runs once
 # Hugging Face model repository (hardcoded for submission)
@@ -163,45 +165,47 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
-        # Priority 0: Look for BASE_ADVANCED models (for testing specific models)
-        base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-        if base_advanced_models:
-            # Sort by modification time, most recent first
-            base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-            model_path = os.path.join(model_dir, base_advanced_models[0])
-            print(f"✓ Using BASE_ADVANCED model: {base_advanced_models[0]}")
-        else:
-            # Priority 1: Look for opening-trained models (highest priority for better openings!)
+        # Priority 1: Look for latest leela_best model (newly trained advanced model) - HIGHEST PRIORITY
+        if not model_path:
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+            if leela_best_models:
+                # Sort by modification time, most recent first
+                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, leela_best_models[0])
+                print(f"✓ Using latest leela_best model: {leela_best_models[0]}")
+        # BRANCH: final-best-model
+        # Priority 2: Look for FINAL_BEST_MODEL with openings (opening-trained)
+        if not model_path:
             opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
             if opening_models:
                 # Sort by modification time, most recent first
                 opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, opening_models[0])
-                print(f"✓ Using opening-trained model: {opening_models[0]}")
-                print(f"  This model was fine-tuned on 5,006 opening positions for better opening play!")
-            else:
-                # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
-                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                if final_models:
-                    # Sort by modification time, most recent first
-                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                    model_path = os.path.join(model_dir, final_models[0])
-                    print(f"Using latest FINAL_BEST_MODEL: {final_models[0]}")
-                else:
-                    # Priority 3: Look for latest epoch checkpoint
-                    epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
-                    if epoch_models:
-                        # Sort by modification time, most recent first
-                        epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, epoch_models[0])
-                        print(f"Using latest epoch checkpoint: {epoch_models[0]}")
-                    else:
-                        # Fallback to most recent .pth file
-                        model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
-                        if model_files:
-                            model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, model_files[0])
-                            print(f"Using most recent model: {model_files[0]}")
+                print(f"✓ [BRANCH: final-best-model] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
+                print(f"  This model was fine-tuned on opening positions for better opening play!")
+        # Priority 3: Look for latest FINAL_BEST_MODEL (current training run)
+        if not model_path:
+            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+            if final_models:
+                # Sort by modification time, most recent first
+                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, final_models[0])
+                print(f"✓ [BRANCH: final-best-model] Using latest FINAL_BEST_MODEL: {final_models[0]}")
+        # Priority 4: Look for latest epoch checkpoint
+        if not model_path:
+            epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
+            if epoch_models:
+                # Sort by modification time, most recent first
+                epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, epoch_models[0])
+                print(f"Using latest epoch checkpoint: {epoch_models[0]}")
+        # Priority 5: Fallback to most recent .pth file
+        if not model_path:
+            model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+            if model_files:
+                model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, model_files[0])
+                print(f"Using most recent model: {model_files[0]}")
     
     # If no local model found, try downloading from Hugging Face
     # IMPORTANT: If using Ding-Bot/models (standalone), always try Hugging Face first
@@ -215,21 +219,43 @@ def initialize_engine():
             try:
                 downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
                 if downloaded_path and os.path.exists(downloaded_path):
-                    model_path = downloaded_path
-                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                    # After downloading, re-check for branch-specific models first
+                    # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                    if not model_path:
+                        # Use downloaded model only if no branch-specific model found
+                        model_path = downloaded_path
+                        print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
                     # If download fails and Chess-Bot/models exists, try that as fallback
                     if os.path.exists(chess_bot_model_dir):
                         print(f"\nHugging Face download failed. Falling back to Chess-Bot/models...")
                         model_dir = chess_bot_model_dir
-                        # Retry finding model in Chess-Bot/models
+                        # Retry finding model in Chess-Bot/models (respect branch priority)
                         if os.path.exists(model_dir):
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"Using fallback model: {final_models[0]}")
+                            # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                            if opening_models:
+                                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, opening_models[0])
+                                print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
                             else:
+                                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                                if final_models:
+                                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, final_models[0])
+                                    print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
+                            if not model_path:
                                 epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
                                 if epoch_models:
                                     epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
@@ -255,12 +281,19 @@ def initialize_engine():
                 if os.path.exists(chess_bot_model_dir):
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
-                    final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                    if final_models:
-                        final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, final_models[0])
-                        print(f"Using fallback model: {final_models[0]}")
+                    # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
                     else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
+                    if not model_path:
                         raise FileNotFoundError(
                             f"Failed to download model from Hugging Face and no fallback available. "
                             f"Repository: {HUGGINGFACE_MODEL_REPO}. "
@@ -286,8 +319,22 @@ def initialize_engine():
             try:
                 downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
                 if downloaded_path and os.path.exists(downloaded_path):
-                    model_path = downloaded_path
-                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                    # After downloading, re-check for branch-specific models first
+                    # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                    if not model_path:
+                        model_path = downloaded_path
+                        print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
                     raise FileNotFoundError(
                         f"Model download from Hugging Face returned None or file doesn't exist. "
@@ -321,7 +368,11 @@ def initialize_engine():
     
     engine = ChessEngine(
         model_path=model_path,
-        search_depth=6,  # Increased depth for stronger play (was 4)
+        search_depth=6,  # Reduced from 8 to 6 for faster search (adaptive depth handles time limits)
+        # Adaptive time management ensures we stay within 1min/game:
+        # - Opening (0.3s): caps to depth 3
+        # - Middlegame (0.8-1.2s): can reach depth 4-5
+        # - Endgame (1.5s): can reach depth 5-6
         time_per_move=1.0,  # Default, but will be overridden by time_limit
         device=device
     )
@@ -332,11 +383,27 @@ def initialize_engine():
 if ENGINE_AVAILABLE:
     try:
         initialize_engine()
+        engine_load_error = None  # Clear any previous error
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        engine_load_error = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': error_details
+        }
         print(f"Warning: Failed to load chess engine: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("Full traceback:")
+        print(error_details)
         print("Will use fallback random move selection")
         engine = None
 else:
+    engine_load_error = {
+        'error': 'PyTorch not available',
+        'type': 'ImportError',
+        'traceback': 'Install dependencies: pip install torch'
+    }
     print("Warning: Chess engine not available. Install dependencies: pip install torch")
     engine = None
 
@@ -347,7 +414,7 @@ def make_move(ctx: GameContext):
     Main entrypoint for making moves.
     Called every time the bot needs to make a move.
     """
-    global engine
+    global engine, engine_load_error
     
     # Get legal moves (legal_moves is a property, not a method)
     legal_moves = list(ctx.board.legal_moves)
@@ -357,7 +424,17 @@ def make_move(ctx: GameContext):
     
     # If engine failed to load, use random fallback
     if engine is None:
-        print("Warning: Engine not loaded, using random moves")
+        print("=" * 80)
+        print("WARNING: Engine not loaded, using random moves")
+        print("=" * 80)
+        if engine_load_error:
+            print(f"Reason: {engine_load_error.get('error', 'Unknown error')}")
+            print(f"Error type: {engine_load_error.get('type', 'Unknown')}")
+            print("\nFull error details:")
+            print(engine_load_error.get('traceback', 'No traceback available'))
+        else:
+            print("Reason: Engine initialization was skipped (ENGINE_AVAILABLE=False)")
+        print("=" * 80)
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
         import random
@@ -414,11 +491,17 @@ def make_move(ctx: GameContext):
         return best_move
         
     except Exception as e:
-        print(f"Error in make_move: {e}")
         import traceback
-        traceback.print_exc()
+        error_details = traceback.format_exc()
+        print("=" * 80)
+        print(f"ERROR in make_move: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("\nFull traceback:")
+        print(error_details)
+        print("=" * 80)
         
         # Fallback to random move
+        print("Falling back to random move selection")
         import random
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
