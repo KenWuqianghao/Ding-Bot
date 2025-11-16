@@ -92,13 +92,14 @@ HUGGINGFACE_MODEL_REPO = 'KenWu/chess-bot-model'  # CHANGE THIS TO YOUR REPO
 if HUGGINGFACE_MODEL_REPO == 'YOUR_USERNAME/chess-bot-model':
     HUGGINGFACE_MODEL_REPO = os.environ.get('HUGGINGFACE_MODEL_REPO', None)
 
-def download_model_from_huggingface(repo_id: str, output_dir: str = "models") -> str:
+def download_model_from_huggingface(repo_id: str, output_dir: str = "models", branch_priority: list = None) -> str:
     """
     Download model from Hugging Face Hub if not found locally.
     
     Args:
         repo_id: Hugging Face repository ID
         output_dir: Directory to save model
+        branch_priority: List of model name patterns to prioritize (e.g., ['tiny_model', 'DISTILLED'])
     
     Returns:
         Path to downloaded model file, or None if download failed
@@ -123,8 +124,22 @@ def download_model_from_huggingface(repo_id: str, output_dir: str = "models") ->
             print(f"ERROR: No .pth files found in {repo_id}")
             return None
         
-        # Download latest model file
-        target_file = sorted(model_files)[-1]
+        # If branch_priority is provided, try to find matching model
+        target_file = None
+        if branch_priority:
+            for priority_pattern in branch_priority:
+                matching_files = [f for f in model_files if priority_pattern in f]
+                if matching_files:
+                    # Sort by name (most recent timestamp usually comes last alphabetically)
+                    target_file = sorted(matching_files)[-1]
+                    print(f"  Found branch-specific model matching '{priority_pattern}': {target_file}")
+                    break
+        
+        # If no branch-specific model found, download latest model file (alphabetically last)
+        if not target_file:
+            target_file = sorted(model_files)[-1]
+            print(f"  No branch-specific model found, downloading latest: {target_file}")
+        
         print(f"  Downloading {target_file}...")
         
         local_path = hf_hub_download(
@@ -147,6 +162,29 @@ def download_model_from_huggingface(repo_id: str, output_dir: str = "models") ->
 def initialize_engine():
     """Initialize the chess engine with our trained model."""
     global engine
+    
+    # Detect current Git branch to determine model priority
+    try:
+        import subprocess
+        result = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+                              capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+        current_branch = result.stdout.strip() if result.returncode == 0 else None
+    except:
+        current_branch = None
+    
+    # Define branch-specific model priorities for Hugging Face downloads
+    branch_model_priorities = {
+        'distilled-model': ['tiny_model', 'DISTILLED'],
+        'base-advanced-opening': ['BASE_ADVANCED', 'BASE_ADVANCED.*openings'],
+        'final-best-model': ['FINAL_BEST_MODEL.*openings', 'FINAL_BEST_MODEL'],
+        'leela': ['leela_best'],
+        'main': ['leela_best', 'FINAL_BEST_MODEL']
+    }
+    
+    # Get branch-specific priority list
+    hf_download_priority = branch_model_priorities.get(current_branch, None)
+    if hf_download_priority:
+        print(f"[BRANCH: {current_branch}] Will prioritize Hugging Face models: {hf_download_priority}")
     
     # Priority: 1) Latest FINAL_BEST_MODEL (current training), 2) Latest resumed model, 3) Latest epoch checkpoint, 4) Most recent .pth, 5) Download from Hugging Face
     # Check Ding-Bot/models first (for standalone deployment), then fall back to Chess-Bot/models (for local development)
@@ -217,7 +255,7 @@ def initialize_engine():
             print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")
             print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")
             try:
-                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
+                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir, branch_priority=hf_download_priority)
                 if downloaded_path and os.path.exists(downloaded_path):
                     # After downloading, re-check for branch-specific models first
                     # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
@@ -317,7 +355,7 @@ def initialize_engine():
             print(f"  Repository: {HUGGINGFACE_MODEL_REPO}")
             print(f"  Repository URL: https://huggingface.co/{HUGGINGFACE_MODEL_REPO}")
             try:
-                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
+                downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir, branch_priority=hf_download_priority)
                 if downloaded_path and os.path.exists(downloaded_path):
                     # After downloading, re-check for branch-specific models first
                     # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
