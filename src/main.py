@@ -81,6 +81,8 @@ else:
 
 # Global engine instance (loaded once)
 engine = None
+# Store engine loading error for debugging
+engine_load_error = None
 
 # Write code here that runs once
 # Hugging Face model repository (hardcoded for submission)
@@ -381,11 +383,27 @@ def initialize_engine():
 if ENGINE_AVAILABLE:
     try:
         initialize_engine()
+        engine_load_error = None  # Clear any previous error
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        engine_load_error = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': error_details
+        }
         print(f"Warning: Failed to load chess engine: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("Full traceback:")
+        print(error_details)
         print("Will use fallback random move selection")
         engine = None
 else:
+    engine_load_error = {
+        'error': 'PyTorch not available',
+        'type': 'ImportError',
+        'traceback': 'Install dependencies: pip install torch'
+    }
     print("Warning: Chess engine not available. Install dependencies: pip install torch")
     engine = None
 
@@ -396,7 +414,7 @@ def make_move(ctx: GameContext):
     Main entrypoint for making moves.
     Called every time the bot needs to make a move.
     """
-    global engine
+    global engine, engine_load_error
     
     # Get legal moves (legal_moves is a property, not a method)
     legal_moves = list(ctx.board.legal_moves)
@@ -406,7 +424,17 @@ def make_move(ctx: GameContext):
     
     # If engine failed to load, use random fallback
     if engine is None:
-        print("Warning: Engine not loaded, using random moves")
+        print("=" * 80)
+        print("WARNING: Engine not loaded, using random moves")
+        print("=" * 80)
+        if engine_load_error:
+            print(f"Reason: {engine_load_error.get('error', 'Unknown error')}")
+            print(f"Error type: {engine_load_error.get('type', 'Unknown')}")
+            print("\nFull error details:")
+            print(engine_load_error.get('traceback', 'No traceback available'))
+        else:
+            print("Reason: Engine initialization was skipped (ENGINE_AVAILABLE=False)")
+        print("=" * 80)
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
         import random
@@ -463,11 +491,17 @@ def make_move(ctx: GameContext):
         return best_move
         
     except Exception as e:
-        print(f"Error in make_move: {e}")
         import traceback
-        traceback.print_exc()
+        error_details = traceback.format_exc()
+        print("=" * 80)
+        print(f"ERROR in make_move: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("\nFull traceback:")
+        print(error_details)
+        print("=" * 80)
         
         # Fallback to random move
+        print("Falling back to random move selection")
         import random
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
