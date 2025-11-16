@@ -81,6 +81,8 @@ else:
 
 # Global engine instance (loaded once)
 engine = None
+# Store engine loading error for debugging
+engine_load_error = None
 
 # Write code here that runs once
 # Hugging Face model repository (hardcoded for submission)
@@ -171,22 +173,25 @@ def initialize_engine():
                 leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, leela_best_models[0])
                 print(f"✓ Using latest leela_best model: {leela_best_models[0]}")
-        # BRANCH: distilled-model
-        # Priority 2: Look for DISTILLED or tiny_model (distilled models)
+        # BRANCH: final-best-model
+        # Priority 2: Look for FINAL_BEST_MODEL with openings (opening-trained)
         if not model_path:
-            distilled_models = [f for f in os.listdir(model_dir) if (f.startswith('DISTILLED_') or f.startswith('tiny_model_')) and f.endswith('.pth')]
-            if distilled_models:
-                # Prefer FP16 models (smaller)
-                fp16_models = [f for f in distilled_models if '_fp16' in f]
-                if fp16_models:
-                    fp16_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                    model_path = os.path.join(model_dir, fp16_models[0])
-                    print(f"✓ [BRANCH: distilled-model] Using FP16 distilled model: {fp16_models[0]}")
-                else:
-                    distilled_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                    model_path = os.path.join(model_dir, distilled_models[0])
-                    print(f"✓ [BRANCH: distilled-model] Using distilled model: {distilled_models[0]}")
-        # Priority 3: Look for latest epoch checkpoint
+            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+            if opening_models:
+                # Sort by modification time, most recent first
+                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, opening_models[0])
+                print(f"✓ [BRANCH: final-best-model] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
+                print(f"  This model was fine-tuned on opening positions for better opening play!")
+        # Priority 3: Look for latest FINAL_BEST_MODEL (current training run)
+        if not model_path:
+            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+            if final_models:
+                # Sort by modification time, most recent first
+                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, final_models[0])
+                print(f"✓ [BRANCH: final-best-model] Using latest FINAL_BEST_MODEL: {final_models[0]}")
+        # Priority 4: Look for latest epoch checkpoint
         if not model_path:
             epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
             if epoch_models:
@@ -378,11 +383,27 @@ def initialize_engine():
 if ENGINE_AVAILABLE:
     try:
         initialize_engine()
+        engine_load_error = None  # Clear any previous error
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        engine_load_error = {
+            'error': str(e),
+            'type': type(e).__name__,
+            'traceback': error_details
+        }
         print(f"Warning: Failed to load chess engine: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("Full traceback:")
+        print(error_details)
         print("Will use fallback random move selection")
         engine = None
 else:
+    engine_load_error = {
+        'error': 'PyTorch not available',
+        'type': 'ImportError',
+        'traceback': 'Install dependencies: pip install torch'
+    }
     print("Warning: Chess engine not available. Install dependencies: pip install torch")
     engine = None
 
@@ -393,7 +414,7 @@ def make_move(ctx: GameContext):
     Main entrypoint for making moves.
     Called every time the bot needs to make a move.
     """
-    global engine
+    global engine, engine_load_error
     
     # Get legal moves (legal_moves is a property, not a method)
     legal_moves = list(ctx.board.legal_moves)
@@ -403,7 +424,17 @@ def make_move(ctx: GameContext):
     
     # If engine failed to load, use random fallback
     if engine is None:
-        print("Warning: Engine not loaded, using random moves")
+        print("=" * 80)
+        print("WARNING: Engine not loaded, using random moves")
+        print("=" * 80)
+        if engine_load_error:
+            print(f"Reason: {engine_load_error.get('error', 'Unknown error')}")
+            print(f"Error type: {engine_load_error.get('type', 'Unknown')}")
+            print("\nFull error details:")
+            print(engine_load_error.get('traceback', 'No traceback available'))
+        else:
+            print("Reason: Engine initialization was skipped (ENGINE_AVAILABLE=False)")
+        print("=" * 80)
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
         import random
@@ -460,11 +491,17 @@ def make_move(ctx: GameContext):
         return best_move
         
     except Exception as e:
-        print(f"Error in make_move: {e}")
         import traceback
-        traceback.print_exc()
+        error_details = traceback.format_exc()
+        print("=" * 80)
+        print(f"ERROR in make_move: {e}")
+        print(f"Error type: {type(e).__name__}")
+        print("\nFull traceback:")
+        print(error_details)
+        print("=" * 80)
         
         # Fallback to random move
+        print("Falling back to random move selection")
         import random
         move_probs = {move: 1.0 / len(legal_moves) for move in legal_moves}
         ctx.logProbabilities(move_probs)
