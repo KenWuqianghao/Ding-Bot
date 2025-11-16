@@ -156,7 +156,8 @@ class ChessEngine:
                         print(f"Warning: Model not found at {path}, skipping")
                         continue
                     
-                    checkpoint = torch.load(path, map_location=self.device)
+                    # Always load to CPU first for compatibility, then move to device
+                    checkpoint = torch.load(path, map_location='cpu')
                     detected_size = detect_model_size(checkpoint) if model_size is None else model_size
                     
                     # Create model
@@ -198,7 +199,8 @@ class ChessEngine:
                 if not os.path.exists(model_path):
                     raise FileNotFoundError(f"Model not found at {model_path}")
             
-                checkpoint = torch.load(model_path, map_location=self.device)
+                # Always load to CPU first for compatibility, then move to device
+                checkpoint = torch.load(model_path, map_location='cpu')
                 
                 # Detect model size if not specified
                 if model_size is None:
@@ -228,11 +230,13 @@ class ChessEngine:
                 
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 
-                # Handle quantized models (FP16)
+                # Handle quantized models (FP16) - only use FP16 on CUDA, not CPU
                 quantization = checkpoint.get('quantization', None)
-                if quantization == 'fp16':
-                    self.model = self.model.half()  # Convert to FP16
-                    print(f"Loaded FP16 quantized model")
+                if quantization == 'fp16' and self.device.type == 'cuda':
+                    self.model = self.model.half()  # Convert to FP16 (CUDA only)
+                    print(f"Loaded FP16 quantized model (CUDA)")
+                elif quantization == 'fp16' and self.device.type == 'cpu':
+                    print(f"Warning: FP16 model detected but running on CPU. Using FP32 instead.")
                 
                 self.model.to(self.device)
                 self.model.eval()
