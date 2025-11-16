@@ -25,6 +25,10 @@ import os
 
 from model.architecture import ChessNet, ChessNetLarge, ChessNetXL
 from model.architectures.leela_style import LeelaChessNet, LeelaChessNetLarge
+try:
+    from model.architectures.leela_tiny import LeelaChessNetTiny
+except ImportError:
+    LeelaChessNetTiny = None
 from engine.evaluation import NNEvaluator
 from engine.stockfish_evaluator import StockfishEvaluator
 from engine.ensemble_evaluator import EnsembleEvaluator
@@ -62,9 +66,33 @@ def detect_model_size(checkpoint: dict) -> str:
     # Check for Leela architecture (has conv_input)
     if 'conv_input.weight' in state_dict:
         conv_input_out = state_dict['conv_input.weight'].shape[0]
-        if conv_input_out == 256:
+        if conv_input_out == 96:
+            return 'leela-tiny'  # LeelaChessNetTiny
+        elif conv_input_out == 256:
             return 'leela'
         elif conv_input_out == 384:
+            return 'leela-large'
+    
+    # Check for LeelaChessNetTiny by residual_blocks structure (has residual_blocks.0, etc.)
+    if 'residual_blocks.0.conv1.weight' in state_dict:
+        # Check channels in first residual block to distinguish tiny from regular
+        residual_channels = state_dict['residual_blocks.0.conv1.weight'].shape[0]
+        if residual_channels == 96:
+            return 'leela-tiny'
+        elif residual_channels == 256:
+            # Could be leela or leela-large - check number of blocks
+            max_block = -1
+            for k in state_dict.keys():
+                if 'residual_blocks.' in k:
+                    parts = k.split('.')
+                    if len(parts) >= 2 and parts[1].isdigit():
+                        max_block = max(max_block, int(parts[1]))
+            num_blocks = max_block + 1 if max_block >= 0 else 6
+            if num_blocks >= 10:
+                return 'leela-large'
+            else:
+                return 'leela'
+        elif residual_channels == 384:
             return 'leela-large'
     
     # Fallback: check for residual block naming pattern
@@ -156,8 +184,7 @@ class ChessEngine:
                         print(f"Warning: Model not found at {path}, skipping")
                         continue
                     
-                    # Always load to CPU first for compatibility, then move to device
-                    checkpoint = torch.load(path, map_location='cpu')
+                    checkpoint = torch.load(path, map_location=self.device)
                     detected_size = detect_model_size(checkpoint) if model_size is None else model_size
                     
                     # Create model
@@ -165,6 +192,24 @@ class ChessEngine:
                         model = ChessNetLarge()
                     elif detected_size == 'xl':
                         model = ChessNetXL()
+                    elif detected_size == 'leela-tiny':
+                        if LeelaChessNetTiny is None:
+                            raise ImportError("LeelaChessNetTiny not available. Check leela_tiny.py exists.")
+                        # Detect number of residual blocks and channels from checkpoint
+                        state_dict = checkpoint['model_state_dict']
+                        residual_blocks = [k for k in state_dict.keys() if 'residual_blocks.' in k]
+                        max_block = -1
+                        for k in residual_blocks:
+                            parts = k.split('.')
+                            if len(parts) >= 2 and parts[1].isdigit():
+                                max_block = max(max_block, int(parts[1]))
+                        num_blocks = max_block + 1 if max_block >= 0 else 3  # Default to 3 for tiny
+                        # Detect channels from conv_input
+                        channels = 96  # Default
+                        if 'conv_input.weight' in state_dict:
+                            channels = state_dict['conv_input.weight'].shape[0]
+                        model = LeelaChessNetTiny(num_residual_blocks=num_blocks, channels=channels)
+                        print(f"Detected LeelaChessNetTiny: {num_blocks} blocks, {channels} channels")
                     elif detected_size == 'leela':
                         model = LeelaChessNet(num_residual_blocks=6)
                     elif detected_size == 'leela-large':
@@ -199,8 +244,7 @@ class ChessEngine:
                 if not os.path.exists(model_path):
                     raise FileNotFoundError(f"Model not found at {model_path}")
             
-                # Always load to CPU first for compatibility, then move to device
-                checkpoint = torch.load(model_path, map_location='cpu')
+                checkpoint = torch.load(model_path, map_location=self.device)
                 
                 # Detect model size if not specified
                 if model_size is None:
@@ -211,6 +255,24 @@ class ChessEngine:
                     self.model = ChessNetLarge()
                 elif model_size == 'xl':
                     self.model = ChessNetXL()
+                elif model_size == 'leela-tiny':
+                    if LeelaChessNetTiny is None:
+                        raise ImportError("LeelaChessNetTiny not available. Check leela_tiny.py exists.")
+                    # Detect number of residual blocks and channels from checkpoint
+                    state_dict = checkpoint['model_state_dict']
+                    residual_blocks = [k for k in state_dict.keys() if 'residual_blocks.' in k]
+                    max_block = -1
+                    for k in residual_blocks:
+                        parts = k.split('.')
+                        if len(parts) >= 2 and parts[1].isdigit():
+                            max_block = max(max_block, int(parts[1]))
+                    num_blocks = max_block + 1 if max_block >= 0 else 3  # Default to 3 for tiny
+                    # Detect channels from conv_input
+                    channels = 96  # Default
+                    if 'conv_input.weight' in state_dict:
+                        channels = state_dict['conv_input.weight'].shape[0]
+                    self.model = LeelaChessNetTiny(num_residual_blocks=num_blocks, channels=channels)
+                    print(f"Detected LeelaChessNetTiny: {num_blocks} residual blocks, {channels} channels")
                 elif model_size == 'leela':
                     self.model = LeelaChessNet(num_residual_blocks=6)
                 elif model_size == 'leela-large':
@@ -230,13 +292,11 @@ class ChessEngine:
                 
                 self.model.load_state_dict(checkpoint['model_state_dict'])
                 
-                # Handle quantized models (FP16) - only use FP16 on CUDA, not CPU
+                # Handle quantized models (FP16)
                 quantization = checkpoint.get('quantization', None)
-                if quantization == 'fp16' and self.device.type == 'cuda':
-                    self.model = self.model.half()  # Convert to FP16 (CUDA only)
-                    print(f"Loaded FP16 quantized model (CUDA)")
-                elif quantization == 'fp16' and self.device.type == 'cpu':
-                    print(f"Warning: FP16 model detected but running on CPU. Using FP32 instead.")
+                if quantization == 'fp16':
+                    self.model = self.model.half()  # Convert to FP16
+                    print(f"Loaded FP16 quantized model")
                 
                 self.model.to(self.device)
                 self.model.eval()
