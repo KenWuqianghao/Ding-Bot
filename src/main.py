@@ -189,13 +189,14 @@ def initialize_engine():
                 epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, epoch_models[0])
                 print(f"Using latest epoch checkpoint: {epoch_models[0]}")
-        # Priority 4: Fallback to most recent .pth file
+        # Priority 4: Fallback to most recent .pth file (excluding leela_best - branch-specific only)
         if not model_path:
-            model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+            # Exclude leela_best models - this branch should only use FINAL_BEST_MODEL
+            model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth') and not f.startswith('leela_best_')]
             if model_files:
                 model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, model_files[0])
-                print(f"Using most recent model: {model_files[0]}")
+                print(f"Using most recent model (excluding leela_best): {model_files[0]}")
     
     # If no local model found, try downloading from Hugging Face
     # IMPORTANT: If using Ding-Bot/models (standalone), always try Hugging Face first
@@ -209,20 +210,48 @@ def initialize_engine():
             try:
                 downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
                 if downloaded_path and os.path.exists(downloaded_path):
-                    model_path = downloaded_path
-                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                    # After downloading, re-check for branch-specific models first
+                    # BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                    if not model_path:
+                        # Use downloaded model only if no branch-specific model found
+                        model_path = downloaded_path
+                        print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
                     # If download fails and Chess-Bot/models exists, try that as fallback
                     if os.path.exists(chess_bot_model_dir):
                         print(f"\nHugging Face download failed. Falling back to Chess-Bot/models...")
                         model_dir = chess_bot_model_dir
-                        # Retry finding model in Chess-Bot/models
+                        # Retry finding model in Chess-Bot/models (respect branch priority)
                         if os.path.exists(model_dir):
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"Using fallback model: {final_models[0]}")
+                            # BRANCH: base-advanced-opening - prioritize BASE_ADVANCED
+                            base_advanced_openings = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+                            if base_advanced_openings:
+                                base_advanced_openings.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_advanced_openings[0])
+                                print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_advanced_openings[0]}")
+                            else:
+                                base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                                if base_advanced_models:
+                                    base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, base_advanced_models[0])
+                                    print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_advanced_models[0]}")
+                            if not model_path:
+                                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                                if final_models:
+                                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, final_models[0])
+                                    print(f"Using fallback model: {final_models[0]}")
                             else:
                                 epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
                                 if epoch_models:
@@ -249,11 +278,24 @@ def initialize_engine():
                 if os.path.exists(chess_bot_model_dir):
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
-                    final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                    if final_models:
-                        final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, final_models[0])
-                        print(f"Using fallback model: {final_models[0]}")
+                    # BRANCH: base-advanced-opening - prioritize BASE_ADVANCED
+                    base_advanced_openings = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+                    if base_advanced_openings:
+                        base_advanced_openings.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, base_advanced_openings[0])
+                        print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_advanced_openings[0]}")
+                    else:
+                        base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                        if base_advanced_models:
+                            base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, base_advanced_models[0])
+                            print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_advanced_models[0]}")
+                    if not model_path:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"Using fallback model: {final_models[0]}")
                     else:
                         raise FileNotFoundError(
                             f"Failed to download model from Hugging Face and no fallback available. "
@@ -280,8 +322,16 @@ def initialize_engine():
             try:
                 downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir)
                 if downloaded_path and os.path.exists(downloaded_path):
-                    model_path = downloaded_path
-                    print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
+                    # After downloading, re-check for branch-specific models first
+                    # BRANCH: base-advanced-opening - prioritize BASE_ADVANCED models
+                    base_advanced_openings = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+                    if base_advanced_openings:
+                        base_advanced_openings.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, base_advanced_openings[0])
+                        print(f"✓ [BRANCH: base-advanced-opening] Found opening-trained BASE_ADVANCED after download: {base_advanced_openings[0]}")
+                    elif not model_path:
+                        model_path = downloaded_path
+                        print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
                     raise FileNotFoundError(
                         f"Model download from Hugging Face returned None or file doesn't exist. "
