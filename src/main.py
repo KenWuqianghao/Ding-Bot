@@ -245,7 +245,7 @@ def initialize_engine():
                                     final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                                     model_path = os.path.join(model_dir, final_models[0])
                                     print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
-                            else:
+                            if not model_path:
                                 epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
                                 if epoch_models:
                                     epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
