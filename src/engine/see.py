@@ -45,9 +45,25 @@ def see(board: chess.Board, move: chess.Move) -> int:
     capturing_value = piece_value(capturing_piece.piece_type)
     
     # Basic SEE: captured - capturing
-    # This is simplified - full SEE would simulate the exchange
-    # For now, this is better than MVV-LVA because it accounts for attacker value
     see_value = captured_value - capturing_value
+    
+    # CRITICAL IMPROVEMENT: Account for defenders
+    # If the captured piece has no defenders, it's a FREE capture (much better)
+    # If it has defenders, the exchange might be more complex
+    defenders = board.attackers(not board.turn, move.to_square)
+    attackers = board.attackers(board.turn, move.to_square)
+    
+    # Remove the capturing piece from attackers count (it's making the capture)
+    attackers_count = len([sq for sq in attackers if sq != move.from_square])
+    
+    # If no defenders, this is a FREE capture - add bonus
+    if len(defenders) == 0:
+        # Free capture bonus: 50% of captured piece value
+        see_value += captured_value * 0.5
+    # If more attackers than defenders after capture, still good
+    elif attackers_count > len(defenders):
+        # Winning exchange - small bonus
+        see_value += captured_value * 0.1
     
     # Bonus for promotion
     if move.promotion:

@@ -8,7 +8,7 @@ from collections import defaultdict
 from .evaluation import NNEvaluator
 from .move_generation import get_legal_moves, order_moves_by_policy, order_moves_by_captures
 from .zobrist import ZobristHash
-from .see import see, order_captures_by_see
+from .see import see, order_captures_by_see, piece_value
 
 
 class MinimaxSearch:
@@ -51,7 +51,8 @@ class MinimaxSearch:
         self.history: Dict[Tuple[int, int], int] = defaultdict(int)
         
         # Quiescence search depth
-        self.quiescence_depth = 3
+        # Increased to see more captures and prevent material blunders
+        self.quiescence_depth = 4  # Reduced from 6 to 4 for speed - material check in quiescence handles blunders
         
         # Search optimization flags
         # DISABLED aggressive pruning - may cause bad moves
@@ -94,16 +95,66 @@ class MinimaxSearch:
         history_moves = []
         quiet = []
         
-        # Separate moves into categories with STRONG priority for captures and castling
+        # Separate moves into categories with STRONG priority for FREE captures
+        # CRITICAL: Free captures (winning material) should be HIGHEST priority
         castling_moves = []
+        free_captures = []  # Captures that win material (FREE pieces)
+        good_captures = []  # Captures that are even or slightly losing (tactical)
+        bad_captures = []  # Captures that lose material (filtered later)
+        early_queen_moves = []  # Penalize early queen moves
+        
+        move_number = board.fullmove_number
+        piece_values = {chess.PAWN: 100, chess.KNIGHT: 320, chess.BISHOP: 330,
+                       chess.ROOK: 500, chess.QUEEN: 900, chess.KING: 20000}
+        
         for move in moves:
             if move == tt_move:
                 tt_move_list.append(move)
-            elif board.is_castling(move):
-                # Castling moves get highest priority (after TT move)
-                castling_moves.append(move)
             elif board.is_capture(move):
-                captures.append(move)
+                # CRITICAL: Check if this is a FREE capture (winning material)
+                captured = board.piece_at(move.to_square)
+                attacker = board.piece_at(move.from_square)
+                if captured and attacker:
+                    captured_val = piece_values.get(captured.piece_type, 0)
+                    attacker_val = piece_values.get(attacker.piece_type, 0)
+                    material_gain = captured_val - attacker_val
+                    
+                    # Check if piece is defended (if not, it's FREE)
+                    defenders = board.attackers(not board.turn, move.to_square)
+                    attackers_on_square = board.attackers(board.turn, move.to_square)
+                    
+                    # Use SEE to check if capture is profitable
+                    try:
+                        see_val = see(board, move)
+                        # If SEE >= 0, it's at least an even capture (profitable)
+                        if see_val >= 0:
+                            # Winning or even capture - prioritize it
+                            if len(defenders) == 0 or see_val > 100:
+                                # FREE capture: no defenders OR strongly winning
+                                free_captures.append(move)
+                            elif material_gain > 0 or see_val >= 0:
+                                # Good capture: winning material or even
+                                good_captures.append(move)
+                            else:
+                                # Even capture but might be tactical
+                                good_captures.append(move)
+                        else:
+                            # Losing capture (SEE < 0)
+                            bad_captures.append(move)
+                    except:
+                        # Fallback: use material gain heuristic
+                        # FREE capture: piece is not defended OR we win material
+                        if len(defenders) == 0 or material_gain > 0:
+                            free_captures.append(move)
+                        elif material_gain >= -50:  # Even or small loss (might be tactical)
+                            good_captures.append(move)
+                        else:
+                            bad_captures.append(move)  # Will be filtered later
+                else:
+                    captures.append(move)  # Fallback
+            elif board.is_castling(move):
+                # Castling moves get high priority (but AFTER free captures)
+                castling_moves.append(move)
             elif board.gives_check(move):
                 checks.append(move)
             elif move in self.killer_moves.get(depth, []):
@@ -111,7 +162,53 @@ class MinimaxSearch:
             elif (move.from_square, move.to_square) in self.history:
                 history_moves.append(move)
             else:
-                quiet.append(move)
+                # CRITICAL: Separate king moves - penalize them if castling is available
+                piece = board.piece_at(move.from_square)
+                is_king_move = piece and piece.piece_type == chess.KING
+                
+                if is_king_move:
+                    # Check if castling is still available
+                    has_castling_rights = False
+                    if piece.color == chess.WHITE:
+                        has_castling_rights = board.has_kingside_castling_rights(chess.WHITE) or \
+                                             board.has_queenside_castling_rights(chess.WHITE)
+                    else:
+                        has_castling_rights = board.has_kingside_castling_rights(chess.BLACK) or \
+                                             board.has_queenside_castling_rights(chess.BLACK)
+                    
+                    # CRITICAL: If castling is available, king moves are BAD (lose castling rights)
+                    # Put them at the END of the move list (lowest priority)
+                    if has_castling_rights:
+                        # King move when castling available - VERY BAD, put at end
+                        early_queen_moves.append(move)  # Reuse this list for bad moves
+                    else:
+                        # King move after castling rights lost - normal quiet move
+                        quiet.append(move)
+                # Check for early queen moves (moves 1-10)
+                elif piece and piece.piece_type == chess.QUEEN and move_number <= 10:
+                    # Check if queen is moving from starting square (d1/d8)
+                    if (piece.color == chess.WHITE and move.from_square == chess.D1) or \
+                       (piece.color == chess.BLACK and move.from_square == chess.D8):
+                        # This is developing the queen early - penalize it
+                        early_queen_moves.append(move)
+                    else:
+                        quiet.append(move)
+                else:
+                    quiet.append(move)
+        
+        # Sort free captures by material gain (highest first)
+        def free_capture_value(move):
+            captured = board.piece_at(move.to_square)
+            attacker = board.piece_at(move.from_square)
+            if captured and attacker:
+                captured_val = piece_values.get(captured.piece_type, 0)
+                attacker_val = piece_values.get(attacker.piece_type, 0)
+                return captured_val - attacker_val
+            return 0
+        free_captures.sort(key=free_capture_value, reverse=True)
+        
+        # Add remaining captures to captures list
+        captures.extend(good_captures)
         
         # Sort captures by SEE (Static Exchange Evaluation) if enabled, else MVV-LVA
         # CRITICAL: Prioritize captures that win material
@@ -146,10 +243,15 @@ class MinimaxSearch:
         except:
             pass
         
-        # Combine in priority order with STRONG emphasis on captures, castling, and checks
-        # Priority: TT move > Castling > Checks > Captures > Killers > History > Quiet
-        # This prevents blunders by prioritizing tactical moves and castling
-        ordered = tt_move_list + castling_moves + checks + captures + killers + history_moves + quiet
+        # Combine in priority order with STRONG emphasis on FREE captures and CASTLING
+        # CRITICAL: Free captures (winning material) are HIGHEST priority
+        # CRITICAL: Castling is HIGH priority (before quiet moves, after captures)
+        # Priority: TT move > FREE Captures > Good Captures > Castling > Checks > Killers > History > Quiet > Bad Captures > King Moves (when castling available) > Early Queen
+        # This ensures we:
+        # 1. ALWAYS capture free pieces first
+        # 2. CASTLE before making quiet moves or king moves
+        # 3. Avoid stupid king moves when castling is available
+        ordered = tt_move_list + free_captures + captures + castling_moves + checks + killers + history_moves + quiet + bad_captures + early_queen_moves
         return ordered
     
     def quiescence_search(
@@ -173,16 +275,60 @@ class MinimaxSearch:
             return beta
         alpha = max(alpha, stand_pat)
         
-        # Get captures and checks
-        moves = [m for m in board.legal_moves if board.is_capture(m) or board.gives_check(m)]
-        if not moves:
+        # Get captures and checks - prioritize winning captures
+        captures = [m for m in board.legal_moves if board.is_capture(m)]
+        checks = [m for m in board.legal_moves if board.gives_check(m) and not board.is_capture(m)]
+        
+        if not captures and not checks:
             return stand_pat
         
-        # Order captures
-        moves = order_moves_by_captures(board, moves)
+        # CRITICAL: Order captures by SEE to prioritize winning captures
+        # This ensures we see free pieces and winning captures first
+        if captures and self.use_see:
+            captures = order_captures_by_see(board, captures)
+        elif captures:
+            # Fallback: order by material gain
+            def capture_priority(move):
+                captured = board.piece_at(move.to_square)
+                attacker = board.piece_at(move.from_square)
+                if captured and attacker:
+                    captured_val = piece_value(captured.piece_type)
+                    attacker_val = piece_value(attacker.piece_type)
+                    return captured_val - attacker_val
+                return 0
+            captures.sort(key=capture_priority, reverse=True)
+        
+        # Combine: winning captures first, then checks, then losing captures
+        # Separate winning vs losing captures
+        winning_captures = []
+        losing_captures = []
+        for move in captures:
+            if self.use_see:
+                see_val = see(board, move)
+                if see_val >= 0:
+                    winning_captures.append(move)
+                else:
+                    losing_captures.append(move)
+            else:
+                # Use material gain heuristic
+                captured = board.piece_at(move.to_square)
+                attacker = board.piece_at(move.from_square)
+                if captured and attacker:
+                    captured_val = piece_value(captured.piece_type)
+                    attacker_val = piece_value(attacker.piece_type)
+                    if captured_val >= attacker_val:
+                        winning_captures.append(move)
+                    else:
+                        losing_captures.append(move)
+                else:
+                    winning_captures.append(move)
+        
+        # Order: winning captures > checks > losing captures
+        moves = winning_captures + checks + losing_captures
         
         for move in moves:
             board.push(move)
+            
             # Negamax: negate and swap bounds
             score = -self.quiescence_search(board, -beta, -alpha, depth + 1)
             board.pop()
@@ -312,6 +458,33 @@ class MinimaxSearch:
         static_eval = self.evaluator.evaluate(board) if (self.use_futility or self.use_delta) else None
         
         for move_idx, move in enumerate(legal_moves):
+            # CRITICAL SAFETY CHECK: Evaluate move BEFORE making it to see if it hangs pieces
+            # This prevents the engine from making moves that hang pieces
+            piece_moved = board.piece_at(move.from_square)
+            if piece_moved and piece_moved.piece_type != chess.KING and not board.is_capture(move):
+                # Check if this move leaves a piece hanging
+                # Only check quiet moves (captures are already prioritized)
+                material_before = self.evaluator._material_eval(board)
+                board.push(move)
+                material_after = self.evaluator._material_eval(board)
+                board.pop()
+                
+                # Material eval is always from White's perspective
+                # If current player is White: material drop = material_before - material_after
+                # If current player is Black: material drop = material_after - material_before (negated perspective)
+                if board.turn == chess.WHITE:
+                    material_drop = material_before - material_after
+                else:
+                    material_drop = material_after - material_before  # Black's loss = White's gain
+                
+                # If material dropped by more than 250cp (2.5 pawns), likely hung a piece
+                # Use 250cp threshold to catch knights (320cp) and other pieces
+                if material_drop > 250:  # Significant material loss (knights are 320cp)
+                    # This move hangs a piece - skip it unless it's a check
+                    if not board.gives_check(move):
+                        # Skip quiet moves that hang pieces
+                        continue
+            
             # Delta pruning: skip captures that can't improve alpha
             if self.use_delta and board.is_capture(move) and static_eval is not None:
                 capture_value = see(board, move)
@@ -454,6 +627,7 @@ class MinimaxSearch:
         
         best_move = None
         best_score = -math.inf
+        final_depth = 0  # Initialize final_depth to track depth reached
         
         # Aspiration window: start with narrow window around previous score
         aspiration_window = 50  # centipawns

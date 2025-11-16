@@ -163,30 +163,48 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
-        # Priority 0: Look for BASE_ADVANCED models (for testing specific models)
-        base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-        if base_advanced_models:
+        # Priority 0: Look for latest leela_best model (newly trained - highest priority!)
+        leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+        if leela_models:
             # Sort by modification time, most recent first
-            base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-            model_path = os.path.join(model_dir, base_advanced_models[0])
-            print(f"✓ Using BASE_ADVANCED model: {base_advanced_models[0]}")
-        else:
-            # Priority 1: Look for opening-trained models (highest priority for better openings!)
+            leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+            model_path = os.path.join(model_dir, leela_models[0])
+            print(f"✓ Using latest trained model: {leela_models[0]}")
+            print(f"  This is your most recently trained model!")
+        # Priority 0.5: Look for FINAL_BEST_MODEL with openings (opening-trained)
+        elif not model_path:
             opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
             if opening_models:
                 # Sort by modification time, most recent first
                 opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, opening_models[0])
-                print(f"✓ Using opening-trained model: {opening_models[0]}")
-                print(f"  This model was fine-tuned on 5,006 opening positions for better opening play!")
+                print(f"✓ Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
+                print(f"  This model was fine-tuned on opening positions for better opening play!")
+        # Priority 1: Look for latest FINAL_BEST_MODEL (current training run)
+        if not model_path:
+            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+            if final_models:
+                # Sort by modification time, most recent first
+                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, final_models[0])
+                print(f"✓ Using latest FINAL_BEST_MODEL: {final_models[0]}")
+        # Priority 1: Look for BASE_ADVANCED models with openings_book (opening-trained)
+        if not model_path:
+            base_advanced_openings = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+            if base_advanced_openings:
+                # Sort by modification time, most recent first
+                base_advanced_openings.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, base_advanced_openings[0])
+                print(f"✓ Using opening-trained BASE_ADVANCED model: {base_advanced_openings[0]}")
+                print(f"  This model was fine-tuned on opening positions for better opening play!")
             else:
-                # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
-                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                if final_models:
+                # Priority 1.5: Look for other BASE_ADVANCED models (for testing specific models)
+                base_advanced_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                if base_advanced_models:
                     # Sort by modification time, most recent first
-                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                    model_path = os.path.join(model_dir, final_models[0])
-                    print(f"Using latest FINAL_BEST_MODEL: {final_models[0]}")
+                    base_advanced_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_advanced_models[0])
+                    print(f"✓ Using BASE_ADVANCED model: {base_advanced_models[0]}")
                 else:
                     # Priority 3: Look for latest epoch checkpoint
                     epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
@@ -321,7 +339,11 @@ def initialize_engine():
     
     engine = ChessEngine(
         model_path=model_path,
-        search_depth=6,  # Increased depth for stronger play (was 4)
+        search_depth=8,  # Increased depth to see deeper and prevent blunders (was 7)
+        # Adaptive time management ensures we stay within 1min/game:
+        # - Opening (0.3s): caps to depth 5
+        # - Middlegame (0.8-1.2s): can reach depth 6-7
+        # - Endgame (1.5s): can reach depth 7-8
         time_per_move=1.0,  # Default, but will be overridden by time_limit
         device=device
     )
