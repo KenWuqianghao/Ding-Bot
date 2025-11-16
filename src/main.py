@@ -130,8 +130,8 @@ def download_model_from_huggingface(repo_id: str, output_dir: str = "models", br
             for priority_pattern in branch_priority:
                 matching_files = [f for f in model_files if priority_pattern in f]
                 if matching_files:
-                    # For FINAL_BEST_MODEL, prioritize opening-trained versions
-                    if 'FINAL_BEST_MODEL' in priority_pattern:
+                    # For BASE_ADVANCED, prioritize opening-trained versions
+                    if 'BASE_ADVANCED' in priority_pattern:
                         opening_files = [f for f in matching_files if '_openings_' in f]
                         if opening_files:
                             matching_files = opening_files
@@ -168,13 +168,31 @@ def initialize_engine():
     """Initialize the chess engine with our trained model."""
     global engine
     
-    # HARDCODED BRANCH: final-best-model
-    # This file is for the final-best-model branch - prioritize FINAL_BEST_MODEL models
-    BRANCH_NAME = 'final-best-model'
-    hf_download_priority = ['FINAL_BEST_MODEL']  # Will match both openings and regular FINAL_BEST_MODEL
-    print(f"[BRANCH: {BRANCH_NAME}] Will prioritize Hugging Face models: {hf_download_priority}")
+    # Detect current Git branch to determine model priority
+    try:
+        import subprocess
+        result = subprocess.run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'], 
+                              capture_output=True, text=True, cwd=Path(__file__).parent.parent)
+        current_branch = result.stdout.strip() if result.returncode == 0 else None
+    except:
+        current_branch = None
     
-    # Priority: 1) Latest FINAL_BEST_MODEL (current training), 2) Latest resumed model, 3) Latest epoch checkpoint, 4) Most recent .pth, 5) Download from Hugging Face
+    # Define branch-specific model priorities for Hugging Face downloads
+    # Patterns are matched using substring matching (not regex)
+    branch_model_priorities = {
+        'distilled-model': ['tiny_model', 'DISTILLED'],
+        'base-advanced-opening': ['BASE_ADVANCED'],
+        'final-best-model': ['BASE_ADVANCED'],  # Will match both openings and regular BASE_ADVANCED
+        'leela': ['leela_best'],
+        'main': ['leela_best', 'BASE_ADVANCED']
+    }
+    
+    # Get branch-specific priority list
+    hf_download_priority = branch_model_priorities.get(current_branch, None)
+    if hf_download_priority:
+        print(f"[BRANCH: {current_branch}] Will prioritize Hugging Face models: {hf_download_priority}")
+    
+    # Priority: 1) Latest BASE_ADVANCED (current training), 2) Latest resumed model, 3) Latest epoch checkpoint, 4) Most recent .pth, 5) Download from Hugging Face
     # Check Ding-Bot/models first (for standalone deployment), then fall back to Chess-Bot/models (for local development)
     ding_bot_model_dir = os.path.join(Path(__file__).parent.parent, 'models')  # Ding-Bot/models
     chess_bot_model_dir = os.path.join(chess_bot_path, 'models') if os.path.exists(chess_bot_path) else None  # Chess-Bot/models (may not exist in judge system)
@@ -191,23 +209,86 @@ def initialize_engine():
     model_path = None
     
     if os.path.exists(model_dir):
-        # HARDCODED BRANCH: final-best-model
-        # Priority 1: Look for FINAL_BEST_MODEL with openings_book (opening-trained)
+        # Branch-specific model priority BEFORE generic priority
+        if current_branch == 'distilled-model':
+            # Priority 1: Look for tiny_model or DISTILLED models
+            if not model_path:
+                tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
+                if tiny_models:
+                    tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, tiny_models[0])
+                    print(f"✓ [BRANCH: distilled-model] Using distilled model: {tiny_models[0]}")
+        elif current_branch == 'base-advanced-opening':
+            # Priority 1: Look for BASE_ADVANCED models (with openings_book preferred)
+            if not model_path:
+                base_opening_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and '_openings_book_' in f and f.endswith('.pth')]
+                if base_opening_models:
+                    base_base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_base_models[0])
+                    print(f"✓ [BRANCH: base-advanced-opening] Using BASE_ADVANCED with openings: {base_base_models[0]}")
+            # Priority 2: Look for any BASE_ADVANCED model
+            if not model_path:
+                base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                if base_models:
+                    base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_models[0])
+                    print(f"✓ [BRANCH: base-advanced-opening] Using BASE_ADVANCED model: {base_models[0]}")
+        elif current_branch == 'final-best-model':
+            # Priority 1: Look for BASE_ADVANCED with openings_book (opening-trained)
+            if not model_path:
+                base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                if base_models:
+                    base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_models[0])
+                    print(f"✓ [BRANCH: base-advanced-opening] Using opening-trained BASE_ADVANCED: {base_models[0]}")
+                    print(f"  This model was fine-tuned on opening positions for better opening play!")
+            # Priority 2: Look for latest BASE_ADVANCED (current training run)
+            if not model_path:
+                base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                if base_models:
+                    base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_models[0])
+                    print(f"✓ [BRANCH: base-advanced-opening] Using latest BASE_ADVANCED: {base_models[0]}")
+        elif current_branch == 'leela':
+            # Priority 1: Look for latest leela_best model
+            if not model_path:
+                leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                if leela_best_models:
+                    leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, leela_best_models[0])
+                    print(f"✓ [BRANCH: leela] Using latest leela_best model: {leela_best_models[0]}")
+        elif current_branch == 'main':
+            # Priority 1: Look for latest leela_best model
+            if not model_path:
+                leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+                if leela_best_models:
+                    leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, leela_best_models[0])
+                    print(f"✓ [BRANCH: main] Using latest leela_best model: {leela_best_models[0]}")
+            # Priority 2: Look for BASE_ADVANCED
+            if not model_path:
+                base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                if base_models:
+                    base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                    model_path = os.path.join(model_dir, base_models[0])
+                    print(f"✓ [BRANCH: main] Using BASE_ADVANCED: {base_models[0]}")
+        
+        # Generic fallback priorities (only if branch-specific didn't find anything)
+        # Priority: Look for latest leela_best model (newly trained advanced model)
         if not model_path:
-            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-            if opening_models:
-                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, opening_models[0])
-                print(f"✓ [BRANCH: final-best-model] Using opening-trained FINAL_BEST_MODEL: {opening_models[0]}")
-                print(f"  This model was fine-tuned on opening positions for better opening play!")
-        # Priority 2: Look for latest FINAL_BEST_MODEL (current training run)
+            leela_best_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
+            if leela_best_models:
+                leela_best_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, leela_best_models[0])
+                print(f"✓ Using latest leela_best model: {leela_best_models[0]}")
+        # Priority: Look for latest epoch checkpoint
         if not model_path:
-            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-            if final_models:
-                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                model_path = os.path.join(model_dir, final_models[0])
-                print(f"✓ [BRANCH: final-best-model] Using latest FINAL_BEST_MODEL: {final_models[0]}")
-        # Priority 3: Fallback to most recent .pth file (only if no FINAL_BEST_MODEL found)
+            epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
+            if epoch_models:
+                epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                model_path = os.path.join(model_dir, epoch_models[0])
+                print(f"Using latest epoch checkpoint: {epoch_models[0]}")
+        # Priority: Fallback to most recent .pth file
         if not model_path:
             model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
             if model_files:
@@ -243,18 +324,18 @@ def initialize_engine():
                             model_path = os.path.join(model_dir, base_models[0])
                             print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED model after download: {base_models[0]}")
                     elif current_branch == 'final-best-model':
-                        # Look for FINAL_BEST_MODEL with openings first, then regular FINAL_BEST_MODEL
-                        opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                        if opening_models:
-                            opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, opening_models[0])
-                            print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                        # Look for BASE_ADVANCED with openings first, then regular BASE_ADVANCED
+                        base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                        if base_models:
+                            base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, base_models[0])
+                            print(f"✓ [BRANCH: base-advanced-opening] Found opening-trained BASE_ADVANCED after download: {base_models[0]}")
                         else:
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                            if base_models:
+                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_models[0])
+                                print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED after download: {base_models[0]}")
                     elif current_branch == 'leela':
                         # Look for leela_best models
                         leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
@@ -263,18 +344,18 @@ def initialize_engine():
                             model_path = os.path.join(model_dir, leela_models[0])
                             print(f"✓ [BRANCH: leela] Found leela_best model after download: {leela_models[0]}")
                     elif current_branch == 'main':
-                        # Look for leela_best first, then FINAL_BEST_MODEL
+                        # Look for leela_best first, then BASE_ADVANCED
                         leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                         if leela_models:
                             leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, leela_models[0])
                             print(f"✓ [BRANCH: main] Found leela_best model after download: {leela_models[0]}")
                         else:
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"✓ [BRANCH: main] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                            if base_models:
+                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_models[0])
+                                print(f"✓ [BRANCH: main] Found BASE_ADVANCED after download: {base_models[0]}")
                     
                     if not model_path:
                         # Use downloaded model only if no branch-specific model found
@@ -285,25 +366,32 @@ def initialize_engine():
                     if os.path.exists(chess_bot_model_dir):
                         print(f"\nHugging Face download failed. Falling back to Chess-Bot/models...")
                         model_dir = chess_bot_model_dir
-                        # HARDCODED BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
+                        # Retry finding model in Chess-Bot/models (respect branch priority)
                         if os.path.exists(model_dir):
-                            opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                            if opening_models:
-                                opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, opening_models[0])
-                                print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
+                            # BRANCH: final-best-model - prioritize BASE_ADVANCED
+                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                            if base_models:
+                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_models[0])
+                                print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_models[0]}")
                             else:
-                                final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                                if final_models:
-                                    final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                    model_path = os.path.join(model_dir, final_models[0])
-                                    print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
+                                base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                                if base_models:
+                                    base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, base_models[0])
+                                    print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_models[0]}")
                             if not model_path:
-                                model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
-                                if model_files:
-                                    model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                    model_path = os.path.join(model_dir, model_files[0])
-                                    print(f"Using fallback model: {model_files[0]}")
+                                epoch_models = [f for f in os.listdir(model_dir) if '_epoch' in f and f.endswith('.pth')]
+                                if epoch_models:
+                                    epoch_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                    model_path = os.path.join(model_dir, epoch_models[0])
+                                    print(f"Using fallback epoch model: {epoch_models[0]}")
+                                else:
+                                    model_files = [f for f in os.listdir(model_dir) if f.endswith('.pth')]
+                                    if model_files:
+                                        model_files.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                        model_path = os.path.join(model_dir, model_files[0])
+                                        print(f"Using fallback model: {model_files[0]}")
                     
                     if not model_path or not os.path.exists(model_path):
                         raise FileNotFoundError(
@@ -318,18 +406,18 @@ def initialize_engine():
                 if os.path.exists(chess_bot_model_dir):
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
-                    # HARDCODED BRANCH: final-best-model - prioritize FINAL_BEST_MODEL
-                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                    if opening_models:
-                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                        model_path = os.path.join(model_dir, opening_models[0])
-                        print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {opening_models[0]}")
+                    # BRANCH: final-best-model - prioritize BASE_ADVANCED
+                    base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                    if base_models:
+                        base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, base_models[0])
+                        print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_models[0]}")
                     else:
-                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                        if final_models:
-                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, final_models[0])
-                            print(f"✓ [BRANCH: final-best-model] Using fallback FINAL_BEST_MODEL: {final_models[0]}")
+                        base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                        if base_models:
+                            base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, base_models[0])
+                            print(f"✓ [BRANCH: base-advanced-opening] Using fallback BASE_ADVANCED: {base_models[0]}")
                     if not model_path:
                         raise FileNotFoundError(
                             f"Failed to download model from Hugging Face and no fallback available. "
@@ -372,18 +460,18 @@ def initialize_engine():
                             model_path = os.path.join(model_dir, base_models[0])
                             print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED model after download: {base_models[0]}")
                     elif current_branch == 'final-best-model':
-                        # Look for FINAL_BEST_MODEL with openings first, then regular FINAL_BEST_MODEL
-                        opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
-                        if opening_models:
-                            opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, opening_models[0])
-                            print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                        # Look for BASE_ADVANCED with openings first, then regular BASE_ADVANCED
+                        base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                        if base_models:
+                            base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, base_models[0])
+                            print(f"✓ [BRANCH: base-advanced-opening] Found opening-trained BASE_ADVANCED after download: {base_models[0]}")
                         else:
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                            if base_models:
+                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_models[0])
+                                print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED after download: {base_models[0]}")
                     elif current_branch == 'leela':
                         # Look for leela_best models
                         leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
@@ -392,18 +480,18 @@ def initialize_engine():
                             model_path = os.path.join(model_dir, leela_models[0])
                             print(f"✓ [BRANCH: leela] Found leela_best model after download: {leela_models[0]}")
                     elif current_branch == 'main':
-                        # Look for leela_best first, then FINAL_BEST_MODEL
+                        # Look for leela_best first, then BASE_ADVANCED
                         leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
                         if leela_models:
                             leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, leela_models[0])
                             print(f"✓ [BRANCH: main] Found leela_best model after download: {leela_models[0]}")
                         else:
-                            final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
-                            if final_models:
-                                final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, final_models[0])
-                                print(f"✓ [BRANCH: main] Found FINAL_BEST_MODEL after download: {final_models[0]}")
+                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
+                            if base_models:
+                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                                model_path = os.path.join(model_dir, base_models[0])
+                                print(f"✓ [BRANCH: main] Found BASE_ADVANCED after download: {base_models[0]}")
                     
                     if not model_path:
                         # Use downloaded model only if no branch-specific model found
