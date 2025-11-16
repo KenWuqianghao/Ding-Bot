@@ -227,57 +227,22 @@ def initialize_engine():
             try:
                 downloaded_path = download_model_from_huggingface(HUGGINGFACE_MODEL_REPO, model_dir, branch_priority=hf_download_priority)
                 if downloaded_path and os.path.exists(downloaded_path):
-                    # After downloading, re-check for branch-specific models first based on current branch
-                    if current_branch == 'distilled-model':
-                        # Look for tiny_model or DISTILLED models
-                        tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
-                        if tiny_models:
-                            tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, tiny_models[0])
-                            print(f"✓ [BRANCH: distilled-model] Found distilled model after download: {tiny_models[0]}")
-                    elif current_branch == 'base-advanced-opening':
-                        # Look for BASE_ADVANCED models
-                        base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                        if base_models:
-                            base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, base_models[0])
-                            print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED model after download: {base_models[0]}")
-                    elif current_branch == 'final-best-model':
-                        # Look for BASE_ADVANCED with openings first, then regular BASE_ADVANCED
-                        base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                        if base_models:
-                            base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, base_models[0])
-                            print(f"✓ [BRANCH: base-advanced-opening] Found opening-trained BASE_ADVANCED after download: {base_models[0]}")
-                        else:
-                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                            if base_models:
-                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, base_models[0])
-                                print(f"✓ [BRANCH: base-advanced-opening] Found BASE_ADVANCED after download: {base_models[0]}")
-                    elif current_branch == 'leela':
-                        # Look for leela_best models
-                        leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
-                        if leela_models:
-                            leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, leela_models[0])
-                            print(f"✓ [BRANCH: leela] Found leela_best model after download: {leela_models[0]}")
-                    elif current_branch == 'main':
-                        # Look for leela_best first, then BASE_ADVANCED
-                        leela_models = [f for f in os.listdir(model_dir) if f.startswith('leela_best_') and f.endswith('.pth')]
-                        if leela_models:
-                            leela_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                            model_path = os.path.join(model_dir, leela_models[0])
-                            print(f"✓ [BRANCH: main] Found leela_best model after download: {leela_models[0]}")
-                        else:
-                            base_models = [f for f in os.listdir(model_dir) if f.startswith('BASE_ADVANCED_') and f.endswith('.pth')]
-                            if base_models:
-                                base_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
-                                model_path = os.path.join(model_dir, base_models[0])
-                                print(f"✓ [BRANCH: main] Found BASE_ADVANCED after download: {base_models[0]}")
+                    # HARDCODED BRANCH: final-best-model
+                    # After downloading, re-check for FINAL_BEST_MODEL models first
+                    opening_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and '_openings_' in f and f.endswith('.pth')]
+                    if opening_models:
+                        opening_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                        model_path = os.path.join(model_dir, opening_models[0])
+                        print(f"✓ [BRANCH: final-best-model] Found opening-trained FINAL_BEST_MODEL after download: {opening_models[0]}")
+                    else:
+                        final_models = [f for f in os.listdir(model_dir) if f.startswith('FINAL_BEST_MODEL_') and f.endswith('.pth')]
+                        if final_models:
+                            final_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
+                            model_path = os.path.join(model_dir, final_models[0])
+                            print(f"✓ [BRANCH: final-best-model] Found FINAL_BEST_MODEL after download: {final_models[0]}")
                     
                     if not model_path:
-                        # Use downloaded model only if no branch-specific model found
+                        # Use downloaded model only if no FINAL_BEST_MODEL found
                         model_path = downloaded_path
                         print(f"✓ Using downloaded model: {os.path.basename(downloaded_path)}")
                 else:
