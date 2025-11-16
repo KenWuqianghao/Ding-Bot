@@ -192,17 +192,17 @@ def initialize_engine():
     
     if os.path.exists(model_dir):
         # HARDCODED BRANCH: distilled-model
-        # Priority 1: Look for distilled model with openings_book (opening-trained)
+        # Priority 1: Look for tiny_model or DISTILLED models
         if not model_path:
-            tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and '_openings_' in f and f.endswith('.pth')]
+            tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
             if tiny_models:
                 tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, tiny_models[0])
                 print(f"✓ [BRANCH: distilled-model] Using distilled model: {tiny_models[0]}")
                 print(f"  This model was fine-tuned on opening positions for better opening play!")
-        # Priority 2: Look for latest distilled model (current training run)
+        # Priority 2: Look for latest tiny_model or DISTILLED model
         if not model_path:
-            tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and f.endswith('.pth')]
+            tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
             if tiny_models:
                 tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                 model_path = os.path.join(model_dir, tiny_models[0])
@@ -229,13 +229,13 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: distilled-model
                     # After downloading, re-check for distilled model models first
-                    tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and '_openings_' in f and f.endswith('.pth')]
+                    tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                     if tiny_models:
                         tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, tiny_models[0])
                         print(f"✓ [BRANCH: distilled-model] Found distilled model after download: {tiny_models[0]}")
                     else:
-                        tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and f.endswith('.pth')]
+                        tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                         if tiny_models:
                             tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, tiny_models[0])
@@ -252,13 +252,13 @@ def initialize_engine():
                         model_dir = chess_bot_model_dir
                         # HARDCODED BRANCH: distilled-model - prioritize distilled model
                         if os.path.exists(model_dir):
-                            tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and '_openings_' in f and f.endswith('.pth')]
+                            tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                             if tiny_models:
                                 tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                                 model_path = os.path.join(model_dir, tiny_models[0])
                                 print(f"✓ [BRANCH: distilled-model] Using fallback distilled model: {tiny_models[0]}")
                             else:
-                                tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and f.endswith('.pth')]
+                                tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                                 if tiny_models:
                                     tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                                     model_path = os.path.join(model_dir, tiny_models[0])
@@ -284,13 +284,13 @@ def initialize_engine():
                     print(f"\nTrying fallback to Chess-Bot/models...")
                     model_dir = chess_bot_model_dir
                     # HARDCODED BRANCH: distilled-model - prioritize distilled model
-                    tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and '_openings_' in f and f.endswith('.pth')]
+                    tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                     if tiny_models:
                         tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, tiny_models[0])
                         print(f"✓ [BRANCH: distilled-model] Using fallback distilled model: {tiny_models[0]}")
                     else:
-                        tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and f.endswith('.pth')]
+                        tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                         if tiny_models:
                             tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, tiny_models[0])
@@ -323,13 +323,13 @@ def initialize_engine():
                 if downloaded_path and os.path.exists(downloaded_path):
                     # HARDCODED BRANCH: distilled-model
                     # After downloading, re-check for distilled model models first
-                    tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and '_openings_' in f and f.endswith('.pth')]
+                    tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                     if tiny_models:
                         tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                         model_path = os.path.join(model_dir, tiny_models[0])
                         print(f"✓ [BRANCH: distilled-model] Found distilled model after download: {tiny_models[0]}")
                     else:
-                        tiny_models = [f for f in os.listdir(model_dir) if f.startswith('tiny_model_') and f.endswith('.pth')]
+                        tiny_models = [f for f in os.listdir(model_dir) if (f.startswith('tiny_model_') or f.startswith('DISTILLED_')) and f.endswith('.pth')]
                         if tiny_models:
                             tiny_models.sort(key=lambda x: os.path.getmtime(os.path.join(model_dir, x)), reverse=True)
                             model_path = os.path.join(model_dir, tiny_models[0])
